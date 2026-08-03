@@ -61,7 +61,7 @@ function ProjectsPanel({ projects }: { projects: Project[] }) {
       </div>
       <div className="space-y-1.5">
         {projects.slice(0, 7).map(p => (
-          <div key={p.slug} className="flex items-center gap-3 rounded-lg border border-[var(--hq-hairline)] bg-white/[0.02] px-3 py-2.5">
+          <div key={p.slug} className="flex items-center gap-3 rounded-lg border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-3 py-2.5">
             <span style={{ color: statusTone[p.status] || "var(--hq-text-ghost)" }}>
               <StatusIcon s={p.status} />
             </span>
@@ -153,7 +153,7 @@ function TasksPanel({ data }: { data: TaskData | null }) {
       {total > 0 ? (
         <div className="grid grid-cols-4 gap-2">
           {statusOrder.map(s => (
-            <div key={s} className="rounded-lg border border-[var(--hq-hairline)] bg-white/[0.02] px-2 py-3 text-center">
+            <div key={s} className="rounded-lg border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-2 py-3 text-center">
               <div className="num font-semibold text-[20px] text-[var(--hq-text)]">{counts[s] || 0}</div>
               <div className="eyebrow !text-[9px] mt-1">{labels[s] || s}</div>
             </div>
@@ -285,11 +285,11 @@ export default function Dashboard() {
               </span>
               <span className="eyebrow !text-[9.5px] !text-[var(--hq-text-faint)]">Live</span>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-white/[0.02] px-2.5 py-1">
+            <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-2.5 py-1">
               <Briefcase className="w-3 h-3 text-[var(--hq-text-ghost)]" />
               <span className="num text-[11px]">{activeCount} active</span>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-white/[0.02] px-2.5 py-1">
+            <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-2.5 py-1">
               <ClipboardList className="w-3 h-3 text-[var(--hq-text-ghost)]" />
               <span className="num text-[11px]">{openTasks} open tasks</span>
             </div>

@@ -89,7 +89,7 @@ export default function ClientsPage() {
                     value={revInput}
                     onChange={e => setRevInput(e.target.value)}
                     placeholder="Monthly revenue $"
-                    className="flex-1 min-w-0 rounded-lg border border-[var(--hq-hairline)] bg-white/[0.02] px-3 py-1.5 text-[12.5px] text-[var(--hq-text)] outline-none focus:border-[var(--hq-accent)]"
+                    className="flex-1 min-w-0 rounded-lg border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-3 py-1.5 text-[12.5px] text-[var(--hq-text)] outline-none focus:border-[var(--hq-accent)]"
                   />
                   <Button onClick={saveRevenue} disabled={saving} size="sm">
                     <Pencil className="w-3.5 h-3.5" /> {saving ? "Saving" : "Save"}

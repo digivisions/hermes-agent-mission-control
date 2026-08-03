@@ -98,7 +98,7 @@ export function MetricCard({
       {/* target progress — pinned to bottom for row alignment */}
       {pct !== null && (
         <div className="mt-auto pt-4 space-y-1.5">
-          <div className="h-[3px] w-full rounded-full bg-white/[0.06] overflow-hidden">
+          <div className="h-[3px] w-full rounded-full bg-[rgba(58,80,107,0.08)] overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-[1200ms] ease-out"
               style={{ width: loaded ? `${pct}%` : "0%", background: accent, opacity: 0.85 }}

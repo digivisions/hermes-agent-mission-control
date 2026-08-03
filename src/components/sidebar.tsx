@@ -80,7 +80,7 @@ export function Sidebar() {
       {/* Mobile drawer */}
       {isOpen && (
         <div className="md:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setIsOpen(false)} />
+          <div className="absolute inset-0 bg-[rgba(23,32,42,0.5)]" onClick={() => setIsOpen(false)} />
           <div className="absolute left-0 top-0 bottom-0 w-72 bg-[var(--bg)] border-r border-[var(--hq-hairline)] p-4 overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <span className="font-semibold text-[15px] text-[var(--hq-text)]">Hermy HQ</span>
@@ -96,7 +96,7 @@ export function Sidebar() {
       {/* Desktop sidebar — relative so it participates in the flex row (content flows beside it) */}
       <aside className="hidden md:flex relative shrink-0 w-[15rem] flex-col border-r border-[var(--hq-hairline)] bg-[color-mix(in_srgb,var(--bg)_98%,transparent)] p-4 overflow-y-auto">
         <Link href="/" className="flex items-center gap-2.5 px-2 py-3 mb-2">
-          <div className="w-8 h-8 rounded-[var(--r-md)] bg-white flex items-center justify-center text-[15px] font-bold text-[#0a0b0d]">
+          <div className="w-8 h-8 rounded-[var(--r-md)] bg-[#3a506b] flex items-center justify-center text-[15px] font-bold text-white">
             M
           </div>
           <div>
@@ -131,8 +131,8 @@ function SidebarNav({ groups, isActive, onNavigate }: {
                   onClick={onNavigate}
                   className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] transition-colors ${
                     active
-                      ? "bg-white/[0.06] text-[var(--hq-text)] font-medium"
-                      : "text-[var(--hq-text-2)] hover:bg-white/[0.03] hover:text-[var(--hq-text)]"
+                      ? "bg-[rgba(58,80,107,0.10)] text-[var(--hq-text)] font-medium"
+                      : "text-[var(--hq-text-2)] hover:bg-[rgba(58,80,107,0.06)] hover:text-[var(--hq-text)]"
                   }`}
                 >
                   <Icon className={`w-4 h-4 ${active ? "text-[var(--hq-accent)]" : "text-[var(--hq-text-ghost)]"}`} />

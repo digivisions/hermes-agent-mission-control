@@ -67,7 +67,7 @@ export default function InfrastructurePage() {
           </div>
           <div className="space-y-2">
             {svc.map(s => (
-              <div key={s.name} className="flex items-center gap-3 rounded-lg border border-[var(--hq-hairline)] bg-white/[0.02] px-3 py-2.5">
+              <div key={s.name} className="flex items-center gap-3 rounded-lg border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-3 py-2.5">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.up ? "var(--up)" : "var(--down)" }} />
                 <Server className="w-3.5 h-3.5 text-[var(--hq-text-ghost)]" />
                 <span className="text-[13px] text-[var(--hq-text)]">{s.name}</span>
@@ -87,7 +87,7 @@ export default function InfrastructurePage() {
           </div>
           <div className="space-y-2">
             {(infra?.mounts ?? []).map(m => (
-              <div key={m.label} className="flex items-center gap-3 rounded-lg border border-[var(--hq-hairline)] bg-white/[0.02] px-3 py-2.5">
+              <div key={m.label} className="flex items-center gap-3 rounded-lg border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-3 py-2.5">
                 <HardDrive className="w-3.5 h-3.5 text-[var(--hq-text-ghost)]" />
                 <span className="text-[13px] text-[var(--hq-text)]">{m.label}</span>
                 <span className="ml-auto text-[11px] font-medium" style={{ color: m.mounted ? "var(--up)" : "var(--down)" }}>

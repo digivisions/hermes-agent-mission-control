@@ -44,20 +44,20 @@
 
 /* Pulse ring for working agents */
 @keyframes status-ring {
-  0%   { box-shadow: 0 0 0 0 rgba(56,189,248,0.5); }
-  70%  { box-shadow: 0 0 0 6px rgba(56,189,248,0); }
-  100% { box-shadow: 0 0 0 0 rgba(56,189,248,0); }
+  0%   { box-shadow: 0 0 0 0 rgba(204,144,56,0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(204,144,56,0); }
+  100% { box-shadow: 0 0 0 0 rgba(204,144,56,0); }
 }
 
 :root {
-  --background: #0a0b0d;
-  --foreground: #e7e8ea;
+  --background: #eaf4fb;
+  --foreground: #3a506b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Inter", var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
@@ -66,7 +66,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -80,23 +80,23 @@ body {
 
 /* ── Glass morphism (legacy compat) ────────────────────── */
 .glass {
-  background: #171717;
-  border: 1px solid #262626;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(58, 80, 107, 0.12);
   transition: all 0.2s ease;
 }
 
 .glass:hover {
-  border-color: #333;
+  border-color: rgba(58, 80, 107, 0.22);
 }
 
 .glass-card {
-  background: #171717;
-  border: 1px solid #262626;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(58, 80, 107, 0.12);
   transition: all 0.2s ease;
 }
 
 .glass-card:hover {
-  border-color: #333;
+  border-color: rgba(58, 80, 107, 0.22);
 }
 
 /* ── War Room grid shift ─────────────────────────────────── */
@@ -122,7 +122,7 @@ body {
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #1a1a1a 25%, #242424 50%, #1a1a1a 75%);
+  background: linear-gradient(90deg, #eef5fb 25%, #e2ecf6 50%, #eef5fb 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 6px;
@@ -139,17 +139,17 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.08);
+  background: rgba(58, 80, 107, 0.18);
   border-radius: 99px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.14);
+  background: rgba(58, 80, 107, 0.3);
 }
 
 /* Selection */
 ::selection {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(204, 144, 56, 0.22);
 }
 
 /* Force LTR everywhere */
@@ -163,34 +163,32 @@ textarea, input {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   PREMIUM DESIGN SYSTEM  ·  Hermy HQ  ·  "Calm Luxury" (Linear × Stripe)
-   Restraint + space. Monochrome surface ladder, hairline borders,
-   tabular/mono numerals, ONE desaturated accent, semantic-only
-   status color, sub-300ms ease-out motion. Elevation by light,
-   never by shadow (overlays are the only exception).
+   PREMIUM DESIGN SYSTEM  ·  Hermy HQ  ·  andynguyen.work palette
+   Light mode: pale blue #eaf4fb · navy text #3a506b · warm
+   orange accent #cc9038 · white cards · hairline borders.
    ═══════════════════════════════════════════════════════════ */
 :root {
-  /* surface ladder — depth via lighter tiers, not shadows */
-  --bg:        #0a0b0d;   /* near-black, never #000 (avoids halation) */
-  --surface-1: #101113;   /* cards */
-  --surface-2: #16181b;   /* raised / hover */
-  --surface-3: #1e2024;   /* modals, highest tier */
+  /* surface ladder — white cards on pale blue */
+  --bg:        #eaf4fb;   /* pale cool blue — matches portfolio */
+  --surface-1: #ffffff;   /* cards */
+  --surface-2: #f4f9fd;   /* raised / hover */
+  --surface-3: #ffffff;   /* modals, highest tier */
 
-  /* hairlines carry structure */
-  --line:        rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.13);
+  /* hairlines carry structure — navy at low alpha */
+  --line:        rgba(58, 80, 107, 0.12);
+  --line-strong: rgba(58, 80, 107, 0.22);
 
   /* text ramp (contrast-checked against surfaces) */
-  --text:   #e7e8ea;   /* primary  ~15:1 */
-  --text-2: #a0a3a8;   /* secondary ~7:1 */
-  --text-3: #6b6e74;   /* tertiary — labels/decorative */
-  --text-4: #4b4e54;   /* ghost — hairline captions */
+  --text:   #3a506b;   /* primary — deep navy */
+  --text-2: #5f6b7a;   /* secondary */
+  --text-3: #7b8899;   /* tertiary — labels/decorative */
+  --text-4: #9aa6b5;   /* ghost — hairline captions */
 
-  /* ONE brand accent (desaturated for dark) + semantic-only status */
-  --accent: #6ea8fe;
-  --up:     #5fd0a0;
-  --down:   #f28b82;
-  --warn:   #f5c451;
+  /* ONE brand accent (warm orange) + semantic-only status */
+  --accent: #cc9038;   /* warm orange — portfolio CTA */
+  --up:     #2f9e6e;
+  --down:   #d9534f;
+  --warn:   #c47b1f;
 
   /* radius — calm & precise, never toy-soft */
   --r-sm: 8px;
@@ -212,8 +210,8 @@ textarea, input {
   --hq-up: var(--up);
   --hq-down: var(--down);
   --hq-warn: var(--warn);
-  --hq-elev-1: rgba(255, 255, 255, 0.02);
-  --hq-elev-2: rgba(255, 255, 255, 0.04);
+  --hq-elev-1: rgba(58, 80, 107, 0.04);
+  --hq-elev-2: rgba(58, 80, 107, 0.08);
 }
 
 /* tabular/mono numerals — everywhere numbers compare or align */
@@ -253,10 +251,10 @@ textarea, input {
   position: absolute;
   inset: -20%;
   background:
-    radial-gradient(72% 62% at 8% 6%, rgba(110, 168, 254, 0.14), transparent 70%),
-    radial-gradient(64% 62% at 92% 22%, rgba(95, 208, 160, 0.09), transparent 72%),
-    radial-gradient(70% 62% at 44% 80%, rgba(110, 168, 254, 0.07), transparent 74%),
-    radial-gradient(62% 60% at 98% 98%, rgba(95, 208, 160, 0.06), transparent 74%);
+    radial-gradient(72% 62% at 8% 6%, rgba(204, 144, 56, 0.10), transparent 70%),
+    radial-gradient(64% 62% at 92% 22%, rgba(58, 80, 107, 0.08), transparent 72%),
+    radial-gradient(70% 62% at 44% 80%, rgba(204, 144, 56, 0.05), transparent 74%),
+    radial-gradient(62% 60% at 98% 98%, rgba(58, 80, 107, 0.05), transparent 74%);
   filter: blur(48px);
   animation: aurora-drift 44s ease-in-out infinite;
   will-change: transform;
@@ -266,12 +264,12 @@ textarea, input {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+    linear-gradient(to right, rgba(58, 80, 107, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(58, 80, 107, 0.025) 1px, transparent 1px);
   background-size: 60px 60px;
   /* fade top→bottom uniformly across the full width — no horizontal seam */
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 80%);
-  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 80%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.35), transparent 80%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.35), transparent 80%);
 }
 
 /* Card material — calm luxury: surface-1 + hairline + faint inner
@@ -281,7 +279,7 @@ textarea, input {
   border-radius: var(--r-lg);
   background: var(--surface-1);
   border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   transition:
     border-color 0.3s var(--ease),
     background 0.3s var(--ease),
@@ -293,7 +291,7 @@ textarea, input {
   border-color: var(--line-strong);
   background: var(--surface-2);
   transform: translateY(-2px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 32px -14px rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 12px 32px -14px rgba(58, 80, 107, 0.28);
 }
 .panel-interactive:active {
   transform: translateY(-1px) scale(0.995);
@@ -304,13 +302,13 @@ textarea, input {
   background: var(--surface-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
-  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 12px 40px -8px rgba(58, 80, 107, 0.28);
 }
 
 /* buttons — one filled primary in the whole system, rest are ghost */
 .btn-primary {
   background: var(--text);
-  color: #0a0b0d;
+  color: #ffffff;
   font-weight: 600;
   border-radius: 9999px;
   transition: opacity 0.12s var(--ease), transform 0.12s var(--ease);
