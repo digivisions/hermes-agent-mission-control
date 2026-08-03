@@ -1,7 +1,7 @@
 "use client";
 
 /* ───────────────────────────────────────────────────────────
-   Hermy HQ · Chief-of-Staff brief
+   DigivisionsHQ · Chief-of-Staff brief
    Renders Hermes' daily brief (GET /api/hermes/briefing), a live
    "needs you" chip, and a Generate-now button (POST → bridge runs it).
    ─────────────────────────────────────────────────────────── */

@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({
         tasks: [
           { id: "1", name: "Review Polymarket bot strategy", status: "In progress", priority: "High", category: "Research" },
-          { id: "2", name: "Build Hermy HQ dashboard", status: "In progress", priority: "High", category: "Content" },
+          { id: "2", name: "Build DigivisionsHQ dashboard", status: "In progress", priority: "High", category: "Content" },
           { id: "3", name: "Daily brief automation", status: "Approved", priority: "Medium", category: "Admin" },
         ],
       });

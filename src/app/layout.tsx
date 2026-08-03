@@ -8,8 +8,8 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono"
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space" });
 
 export const metadata: Metadata = {
-  title: "Hermy HQ",
-  description: "Your command center",
+  title: "DigivisionsHQ",
+  description: "Mission control for Digivisions agents",
 };
 
 export const viewport: Viewport = {
