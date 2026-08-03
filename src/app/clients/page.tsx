@@ -56,7 +56,7 @@ export default function ClientsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {clients.map((c, i) => (
-          <Panel key={c.name} className="h-full flex flex-col">
+          <Panel key={c.name} className="h-full flex flex-col p-6">
             <div className="flex items-center gap-2.5 mb-3">
               <div className="w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center" style={{ background: "color-mix(in srgb, " + c.accent + " 15%, transparent)", color: c.accent }}>
                 <Briefcase className="w-4 h-4" />

@@ -60,7 +60,7 @@ export default function InfrastructurePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Services */}
-        <Panel className="h-full">
+        <Panel className="h-full p-6">
           <div className="flex items-center justify-between mb-4">
             <Eyebrow>Services</Eyebrow>
             <Pill>{infra?.allUp ? "All up" : `${svc.filter(s => !s.up).length} down`}</Pill>
@@ -80,7 +80,7 @@ export default function InfrastructurePage() {
         </Panel>
 
         {/* Mac mounts */}
-        <Panel className="h-full">
+        <Panel className="h-full p-6">
           <div className="flex items-center justify-between mb-4">
             <Eyebrow>Mac Connections</Eyebrow>
             <Pill>{infra?.macConnected ? "Mac online" : "Mac offline"}</Pill>
