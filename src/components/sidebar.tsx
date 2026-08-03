@@ -4,20 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import {
-  Home,
-  Twitter,
-  Play,
-  Bot,
-  Lightbulb,
-  Flower2,
-  FileText,
-  ClipboardList,
-  HeartPulse,
-  Cpu,
-  BookOpen,
-  Workflow,
-  Menu,
-  X,
+  Home, Bot, Lightbulb, BookOpen, Briefcase, HeartPulse, Server,
+  Menu, X, LayoutGrid, FolderKanban,
 } from "lucide-react";
 
 const navGroups = [
@@ -25,32 +13,23 @@ const navGroups = [
     name: "Overview",
     items: [
       { href: "/", label: "Dashboard", icon: Home },
-      { href: "/hermes", label: "Hermes", icon: Cpu },
-      { href: "/tasks", label: "Tasks", icon: ClipboardList },
+      { href: "/tasks", label: "Tasks", icon: LayoutGrid },
+      { href: "/hermes", label: "Hermes", icon: Bot },
     ],
   },
   {
-    name: "Content",
+    name: "Work",
     items: [
-      { href: "/x", label: "X", icon: Twitter },
-      { href: "/content-os", label: "Pipeline", icon: Workflow },
-      { href: "/articles", label: "Articles", icon: FileText },
-      { href: "/youtube", label: "YouTube", icon: Play },
-    ],
-  },
-  {
-    name: "Data",
-    items: [
-      { href: "/client-pulse", label: "Client Pulse", icon: HeartPulse },
+      { href: "/projects", label: "Projects", icon: FolderKanban },
+      { href: "/clients", label: "Clients", icon: Briefcase },
     ],
   },
   {
     name: "System",
     items: [
-      { href: "/agents", label: "Agents", icon: Bot },
+      { href: "/infrastructure", label: "Infrastructure", icon: Server },
       { href: "/memory-wiki", label: "Memory Wiki", icon: BookOpen },
       { href: "/ideas", label: "Ideas", icon: Lightbulb },
-      { href: "/garden", label: "Garden", icon: Flower2 },
     ],
   },
 ];
@@ -58,10 +37,10 @@ const navGroups = [
 // Mobile tab bar - only show the 5 most important
 const mobileTabsRaw = [
   { href: "/", label: "Dashboard", icon: Home },
-  { href: "/x", label: "X", icon: Twitter },
-  { href: "/youtube", label: "YouTube", icon: Play },
-  { href: "/ideas", label: "Ideas", icon: Lightbulb },
-  { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/tasks", label: "Tasks", icon: LayoutGrid },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/hermes", label: "Hermes", icon: Bot },
+  { href: "/memory-wiki", label: "Wiki", icon: BookOpen },
 ];
 
 export function Sidebar() {
@@ -83,151 +62,87 @@ export function Sidebar() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const Logo = () => (
-    <div className="flex items-center gap-2.5">
-      <div className="w-8 h-8 rounded-[10px] bg-[var(--text)] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]">
-        <span className="text-[#0a0b0d] font-bold text-[13px] tracking-tight">H</span>
-      </div>
-      <span className="font-semibold text-[var(--text)] tracking-[-0.01em] text-[15px]">Hermy HQ</span>
-    </div>
-  );
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
   return (
     <>
-      {/* Mobile header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-[var(--bg)]/90 backdrop-blur-xl border-b border-[var(--line)] px-4 py-3 flex items-center justify-between">
-        <Logo />
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="p-2 text-[var(--text-2)] hover:text-[var(--text)] transition-colors rounded-lg hover:bg-[var(--surface-1)]"
-          aria-label="Toggle menu"
-        >
-          {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+      {/* Mobile header bar */}
+      <div className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 h-14 border-b border-[var(--hq-hairline)] bg-[color-mix(in_srgb,var(--bg)_92%,transparent)] backdrop-blur">
+        <button onClick={() => setIsOpen(true)} className="p-1.5 -ml-1.5" aria-label="Open menu">
+          <Menu className="w-5 h-5 text-[var(--hq-text)]" />
         </button>
+        <Link href="/" className="font-semibold text-[15px] tracking-[-0.01em] text-[var(--hq-text)]">
+          Hermy HQ
+        </Link>
+        <div className="w-8" />
       </div>
 
-      {/* Mobile bottom tab bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg)]/90 backdrop-blur-xl border-t border-[var(--line)] px-2 py-2 safe-area-pb">
-        <nav className="flex justify-around">
-          {mobileTabsRaw.map((item) => {
-            const isActive = pathname === item.href;
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex flex-col items-center gap-1 p-2 px-3 rounded-lg transition-all ${
-                  isActive
-                    ? "text-[var(--text)] bg-[var(--surface-2)]"
-                    : "text-[var(--text-3)] hover:text-[var(--text-2)] active:scale-95"
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* Mobile overlay */}
+      {/* Mobile drawer */}
       {isOpen && (
-        <div
-          className="md:hidden fixed inset-0 bg-black/60 z-40"
-          onClick={() => setIsOpen(false)}
-        />
+        <div className="md:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setIsOpen(false)} />
+          <div className="absolute left-0 top-0 bottom-0 w-72 bg-[var(--bg)] border-r border-[var(--hq-hairline)] p-4 overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <span className="font-semibold text-[15px] text-[var(--hq-text)]">Hermy HQ</span>
+              <button onClick={() => setIsOpen(false)} className="p-1.5 -mr-1.5" aria-label="Close menu">
+                <X className="w-5 h-5 text-[var(--hq-text)]" />
+              </button>
+            </div>
+            <SidebarNav groups={navGroups} isActive={isActive} onNavigate={() => setIsOpen(false)} />
+          </div>
+        </div>
       )}
 
-      {/* Desktop Sidebar */}
-      <aside
-        className={`
-          fixed md:relative z-50 md:z-10
-          w-64 md:w-[15rem] h-full
-          bg-[var(--bg)] md:bg-transparent border-r border-[var(--line)]
-          flex flex-col
-          transition-transform duration-300 ease-in-out
-          ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          top-0 left-0
-        `}
-      >
-        {/* Logo */}
-        <div className="hidden md:block px-5 pt-6 pb-8">
-          <Logo />
-        </div>
-
-        {/* Spacer for mobile header */}
-        <div className="h-16 md:hidden" />
-
-        {/* Nav */}
-        <nav className="flex-1 px-3 overflow-y-auto">
-          <div className="space-y-5">
-            {navGroups.map((group) => (
-              <div key={group.name}>
-                <h3 className="eyebrow px-3 mb-1.5 !text-[10px] !text-[var(--text-4)]">
-                  {group.name}
-                </h3>
-                <div className="space-y-0.5">
-                  {group.items.map((item) => {
-                    const isActive =
-                      pathname === item.href || pathname.startsWith(item.href + "/");
-                    const Icon = item.icon;
-                    return (
-                      <div key={item.href}>
-                        <Link
-                          href={item.href}
-                          className={`group relative flex items-center gap-3 px-3 py-[7px] rounded-[10px] transition-all duration-150 ${
-                            isActive
-                              ? "bg-[var(--surface-2)] text-[var(--text)]"
-                              : "text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-1)]"
-                          }`}
-                        >
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-[var(--accent)]" />
-                          )}
-                          <Icon
-                            className={`w-[17px] h-[17px] shrink-0 ${
-                              isActive ? "text-[var(--text)]" : "text-[var(--text-3)] group-hover:text-[var(--text-2)]"
-                            }`}
-                          />
-                          <span className="text-[13.5px] font-medium">{item.label}</span>
-                        </Link>
-                        {"anchors" in group &&
-                          isActive &&
-                          (group as { anchors?: { href: string; label: string }[] }).anchors && (
-                            <div className="ml-[26px] mt-0.5 space-y-0.5 border-l border-[var(--line)] pl-3">
-                              {(group as { anchors: { href: string; label: string }[] }).anchors.map(
-                                (a) => (
-                                  <a
-                                    key={a.href}
-                                    href={a.href}
-                                    className="block text-[12px] text-[var(--text-3)] hover:text-[var(--text-2)] py-1 transition-colors"
-                                  >
-                                    {a.label}
-                                  </a>
-                                )
-                              )}
-                            </div>
-                          )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 flex-col border-r border-[var(--hq-hairline)] bg-[color-mix(in_srgb,var(--bg)_98%,transparent)] p-4 overflow-y-auto">
+        <Link href="/" className="flex items-center gap-2.5 px-2 py-3 mb-2">
+          <div className="w-8 h-8 rounded-[var(--r-md)] bg-white flex items-center justify-center text-[15px] font-bold text-[#0a0b0d]">
+            M
           </div>
-        </nav>
-
-        {/* Footer */}
-        <div className="px-4 py-4 border-t border-[var(--line)]">
-          <div className="flex items-center gap-2 text-[var(--text-3)] text-[11.5px]">
-            <span className="relative flex w-1.5 h-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-[var(--up)] opacity-60 animate-ping" />
-              <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-[var(--up)]" />
-            </span>
-            <span>All systems online</span>
+          <div>
+            <div className="font-semibold text-[14.5px] tracking-[-0.01em] text-[var(--hq-text)] leading-tight">Hermy HQ</div>
+            <div className="eyebrow !text-[9px] !text-[var(--hq-text-faint)]">Mission Control</div>
           </div>
-        </div>
+        </Link>
+        <SidebarNav groups={navGroups} isActive={isActive} />
       </aside>
     </>
+  );
+}
+
+function SidebarNav({ groups, isActive, onNavigate }: {
+  groups: typeof navGroups;
+  isActive: (href: string) => boolean;
+  onNavigate?: () => void;
+}) {
+  return (
+    <nav className="space-y-5">
+      {groups.map((group) => (
+        <div key={group.name}>
+          <div className="eyebrow !text-[9.5px] !text-[var(--hq-text-faint)] px-2 mb-1.5">{group.name}</div>
+          <div className="space-y-0.5">
+            {group.items.map((item) => {
+              const active = isActive(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onNavigate}
+                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] transition-colors ${
+                    active
+                      ? "bg-white/[0.06] text-[var(--hq-text)] font-medium"
+                      : "text-[var(--hq-text-2)] hover:bg-white/[0.03] hover:text-[var(--hq-text)]"
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${active ? "text-[var(--hq-accent)]" : "text-[var(--hq-text-ghost)]"}`} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </nav>
   );
 }
