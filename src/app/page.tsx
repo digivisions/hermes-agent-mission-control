@@ -91,13 +91,13 @@ function SortablePanel({ id, index, children, className = "" }: {
         className="cursor-grab active:cursor-grabbing h-full"
         title="Drag to reorder"
       >
-        <Panel className={`h-full flex flex-col ${className}`}>
+        <Panel className={`h-full flex flex-col p-7 ${className}`}>
           {/* drag handle */}
-          <div className="flex items-center justify-between -mt-1 mb-3 select-none">
+          <div className="flex items-center justify-between -mt-1 mb-4 select-none">
             <Eyebrow>{PANELS[index]?.label}</Eyebrow>
             <GripVertical className="w-4 h-4 text-[var(--hq-text-ghost)] opacity-50 group-hover:opacity-100" />
           </div>
-          {children}
+          <div className="flex-1 flex flex-col min-h-0">{children}</div>
         </Panel>
       </div>
     </div>
@@ -112,20 +112,20 @@ function ProjectsPanel({ projects }: { projects: Project[] }) {
       <div className="flex items-center justify-between mb-4">
         <Pill tone="up">{active.length} active</Pill>
       </div>
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {projects.slice(0, 6).map(p => (
-          <div key={p.slug} className="flex items-center gap-3 rounded-xl border border-[var(--hq-hairline)] bg-[var(--hq-elev-1)] px-3.5 py-3">
+          <div key={p.slug} className="flex items-center gap-3.5 rounded-xl border border-[var(--hq-hairline)] bg-[var(--hq-elev-1)] px-4 py-3.5">
             <span className="shrink-0" style={{ color: "var(--hq-up)" }}>
               <StatusIcon s={p.status} />
             </span>
             <div className="flex-1 min-w-0">
               <div className="text-[13.5px] font-medium text-[var(--hq-text)] truncate">{p.name}</div>
-              <div className="num text-[10.5px] text-[var(--hq-text-ghost)] mt-0.5">updated {timeAgo(p.updated ? new Date(p.updated + "T00:00:00").toISOString() : null)}</div>
+              <div className="num text-[10.5px] text-[var(--hq-text-ghost)] mt-1">updated {timeAgo(p.updated ? new Date(p.updated + "T00:00:00").toISOString() : null)}</div>
             </div>
             <Pill tone={prioTone[p.priority] || "neutral"} className="shrink-0">{p.priority}</Pill>
           </div>
         ))}
-        {projects.length === 0 && <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-8 text-center">No projects synced yet</div>}
+        {projects.length === 0 && <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-10 text-center">No projects synced yet</div>}
       </div>
     </>
   );
@@ -135,14 +135,14 @@ function KlailyPanel({ k }: { k: KlailyData }) {
   const rev = k.revenue;
   return (
     <>
-      <div className="flex items-end gap-2.5 mb-1">
+      <div className="flex items-end gap-2.5 mb-2">
         <span className="num font-semibold text-[36px] leading-none tracking-[-0.02em] text-[var(--hq-text)]">
           {rev === null ? "—" : `$${rev.toLocaleString("en-US")}`}
         </span>
         {k.orders !== null && <span className="num text-[12px] text-[var(--hq-text-ghost)] mb-1">{k.orders} orders</span>}
       </div>
-      <div className="eyebrow !text-[9.5px] mb-4">{k.month} · Shopify</div>
-      <div className="space-y-2.5 pt-3 border-t border-[var(--hq-hairline)]">
+      <div className="eyebrow !text-[9.5px] mb-5">{k.month} · Shopify</div>
+      <div className="space-y-3 pt-4 border-t border-[var(--hq-hairline)] mt-auto">
         {k.palmstreetYearly && (
           <div className="flex items-center gap-2 text-[12px] text-[var(--hq-text-2)]">
             <Wallet className="w-3.5 h-3.5 text-[var(--hq-accent)]" />
@@ -173,11 +173,11 @@ function EchoPanel({ project }: { project?: Project }) {
             {project.overview?.split(". ").slice(0, 2).join(". ") || "No overview in vault note."}
           </p>
           {project.nextActions.length > 0 && (
-            <div className="mt-auto pt-3.5 border-t border-[var(--hq-hairline)]">
-              <div className="eyebrow !text-[9.5px] mb-2">Next</div>
-              <div className="space-y-2">
+            <div className="mt-auto pt-4 border-t border-[var(--hq-hairline)]">
+              <div className="eyebrow !text-[9.5px] mb-3">Next</div>
+              <div className="space-y-2.5">
                 {project.nextActions.slice(0, 2).map((a, i) => (
-                  <div key={i} className="text-[11.5px] text-[var(--hq-text-2)] leading-snug flex gap-2">
+                  <div key={i} className="text-[11.5px] text-[var(--hq-text-2)] leading-relaxed flex gap-2.5">
                     <span className="num text-[var(--hq-accent)] shrink-0">{i + 1}.</span>
                     <span>{a}</span>
                   </div>
@@ -234,7 +234,7 @@ function InfraPanel({ infra }: { infra: InfraData | null }) {
       <div className="flex items-center justify-between mb-4">
         <Pill tone={infra?.allUp ? "up" : "down"}>{infra?.allUp ? "All systems up" : "Attention needed"}</Pill>
       </div>
-      <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
         {svc.map(s => (
           <div key={s.name} className="flex items-center gap-2.5 text-[12.5px]">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.up ? "var(--hq-up)" : "var(--hq-down)" }} />
@@ -242,7 +242,7 @@ function InfraPanel({ infra }: { infra: InfraData | null }) {
           </div>
         ))}
       </div>
-      <div className="mt-4 pt-3.5 border-t border-[var(--hq-hairline)] space-y-1.5">
+      <div className="mt-5 pt-4 border-t border-[var(--hq-hairline)] space-y-2">
         <div className="flex items-center gap-2 text-[11.5px] text-[var(--hq-text-2)]">
           <HardDrive className="w-3.5 h-3.5 text-[var(--hq-accent)]" />
           Mac mounts: <span className="num">{mounted.length}/{infra?.mounts?.length ?? 6} connected</span>
@@ -266,7 +266,7 @@ function ActivityPanel() {
       <div className="flex items-center justify-between mb-4">
         <Activity className="w-4 h-4 text-[var(--hq-accent)]" />
       </div>
-      <div className="space-y-3">
+      <div className="space-y-3.5">
         {events.map((e, i) => (
           <div key={i} className="flex items-start gap-3 text-[12.5px]">
             <span className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ background: "var(--hq-accent)" }} />
@@ -276,7 +276,7 @@ function ActivityPanel() {
             </div>
           </div>
         ))}
-        {events.length === 0 && <div className="text-[12px] text-[var(--hq-text-ghost)] py-6 text-center">No activity yet</div>}
+        {events.length === 0 && <div className="text-[12px] text-[var(--hq-text-ghost)] py-8 text-center">No activity yet</div>}
       </div>
     </>
   );
@@ -396,7 +396,7 @@ export default function Dashboard() {
         {/* ── Draggable panel grid ──────────────────────── */}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={order} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-stretch">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-7 items-stretch">
               {order.map((id, i) => (
                 <SortablePanel key={id} id={id} index={i}>
                   {panelContent[id]}
