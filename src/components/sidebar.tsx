@@ -93,8 +93,8 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 flex-col border-r border-[var(--hq-hairline)] bg-[color-mix(in_srgb,var(--bg)_98%,transparent)] p-4 overflow-y-auto">
+      {/* Desktop sidebar — relative so it participates in the flex row (content flows beside it) */}
+      <aside className="hidden md:flex relative shrink-0 w-[15rem] flex-col border-r border-[var(--hq-hairline)] bg-[color-mix(in_srgb,var(--bg)_98%,transparent)] p-4 overflow-y-auto">
         <Link href="/" className="flex items-center gap-2.5 px-2 py-3 mb-2">
           <div className="w-8 h-8 rounded-[var(--r-md)] bg-white flex items-center justify-center text-[15px] font-bold text-[#0a0b0d]">
             M
