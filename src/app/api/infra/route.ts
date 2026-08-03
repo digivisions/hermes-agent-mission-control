@@ -48,14 +48,10 @@ export async function GET() {
     checkService("music-landing-api", () => pm2Running("music-landing-api")),
   ]);
 
-  // Mac mounts (sshfs over Tailscale)
+  // Mac mounts (sshfs over Tailscale) — whole home + DATA2
   const mounts = [
-    { label: "1-Development", path: "/home/andy/mac/1-Development" },
-    { label: "Documents/1-Development", path: "/home/andy/mac/Documents/1-Development" },
-    { label: "Work & Business", path: "/home/andy/mac/Work-Business" },
-    { label: "Claude Projects", path: "/home/andy/mac/Claude-Projects" },
-    { label: "DATA2", path: "/home/andy/mac/DATA2/1-Development" },
-    { label: "Obsidian Vault", path: "/home/andy/mac/Obsidian" },
+    { label: "Mac Home (annguyen)", path: "/home/andy/mac" },
+    { label: "DATA2 Drive", path: "/home/andy/data2" },
   ].map((m) => ({
     ...m,
     mounted: (() => {
