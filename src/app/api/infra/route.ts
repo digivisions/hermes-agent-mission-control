@@ -41,10 +41,10 @@ export async function GET() {
   const [hermes, caddy, honcho, hermyHq, bridge, n8n, musicApi] = await Promise.all([
     checkService("hermes", () => dockerRunning("hermes")),
     checkService("caddy", () => dockerRunning("caddy")),
-    checkService("honcho", () => dockerRunning("honcho")),
+    checkService("honcho", () => dockerRunning("honcho-api")),
     checkService("hermy-hq", () => pm2Running("hermy-hq")),
     checkService("hermes-bridge", () => pm2Running("hermes-bridge")),
-    checkService("n8n", () => dockerRunning("n8n")),
+    checkService("n8n", () => dockerRunning("n8n-q590-n8n-1")),
     checkService("music-landing-api", () => pm2Running("music-landing-api")),
   ]);
 
