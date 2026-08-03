@@ -7,13 +7,8 @@ export default function LoginPage() {
       <div className="hq-ambient" aria-hidden />
       <div className="relative z-10 panel hq-rise w-full max-w-sm p-8">
         <div className="flex flex-col items-center text-center">
-          <div className="w-11 h-11 rounded-[var(--r-md)] bg-[#3a506b] flex items-center justify-center text-[19px] font-bold text-white">
-            D
-          </div>
-          <h1 className="mt-5 text-[20px] font-semibold tracking-[-0.015em] text-[var(--text)]">
-            DigivisionsHQ
-          </h1>
-          <p className="eyebrow mt-2">Sign in to continue</p>
+          <img src="/digivisions-horizontal.png" alt="Digivisions" className="h-7 w-auto object-contain" style={{ maxWidth: "12rem" }} />
+          <p className="eyebrow mt-4">Sign in to continue</p>
         </div>
 
         <div className="rule my-7" />

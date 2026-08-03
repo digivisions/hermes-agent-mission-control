@@ -71,8 +71,8 @@ export function Sidebar() {
         <button onClick={() => setIsOpen(true)} className="p-1.5 -ml-1.5" aria-label="Open menu">
           <Menu className="w-5 h-5 text-[var(--hq-text)]" />
         </button>
-        <Link href="/" className="font-semibold text-[15px] tracking-[-0.01em] text-[var(--hq-text)]">
-          DigivisionsHQ
+        <Link href="/" className="flex items-center">
+          <img src="/digivisions-horizontal.png" alt="Digivisions" className="h-5 w-auto object-contain" style={{ maxWidth: "8rem" }} />
         </Link>
         <div className="w-8" />
       </div>
@@ -83,7 +83,7 @@ export function Sidebar() {
           <div className="absolute inset-0 bg-[rgba(23,32,42,0.5)]" onClick={() => setIsOpen(false)} />
           <div className="absolute left-0 top-0 bottom-0 w-72 bg-[var(--bg)] border-r border-[var(--hq-hairline)] p-4 overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <span className="font-semibold text-[15px] text-[var(--hq-text)]">DigivisionsHQ</span>
+              <img src="/digivisions-horizontal.png" alt="Digivisions" className="h-5 w-auto object-contain" style={{ maxWidth: "8rem" }} />
               <button onClick={() => setIsOpen(false)} className="p-1.5 -mr-1.5" aria-label="Close menu">
                 <X className="w-5 h-5 text-[var(--hq-text)]" />
               </button>
@@ -95,14 +95,13 @@ export function Sidebar() {
 
       {/* Desktop sidebar — relative so it participates in the flex row (content flows beside it) */}
       <aside className="hidden md:flex relative shrink-0 w-[15rem] flex-col border-r border-[var(--hq-hairline)] bg-[color-mix(in_srgb,var(--bg)_98%,transparent)] p-4 overflow-y-auto">
-        <Link href="/" className="flex items-center gap-2.5 px-2 py-3 mb-2">
-          <div className="w-8 h-8 rounded-[var(--r-md)] bg-[#3a506b] flex items-center justify-center text-[15px] font-bold text-white">
-            D
-          </div>
-          <div>
-            <div className="font-semibold text-[14.5px] tracking-[-0.01em] text-[var(--hq-text)] leading-tight">DigivisionsHQ</div>
-            <div className="eyebrow !text-[9px] !text-[var(--hq-text-faint)]">Mission Control</div>
-          </div>
+        <Link href="/" className="flex items-center px-2 py-3 mb-2">
+          <img
+            src="/digivisions-horizontal.png"
+            alt="Digivisions"
+            className="h-6 w-auto object-contain"
+            style={{ maxWidth: "9.5rem" }}
+          />
         </Link>
         <SidebarNav groups={navGroups} isActive={isActive} />
       </aside>
