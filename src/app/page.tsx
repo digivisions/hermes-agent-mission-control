@@ -15,7 +15,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { HermesBriefing } from "@/components/hermes-briefing";
 import { ApprovalInbox } from "@/components/approval-inbox";
-import { Eyebrow, Panel, Pill } from "@/components/ui/kit";
+import { ClientChat } from "@/components/client-chat";
+import { Eyebrow, Panel, Pill, SectionHeader } from "@/components/ui/kit";
 
 // ── Types ─────────────────────────────────────────────────
 interface Project {
@@ -391,6 +392,14 @@ export default function Dashboard() {
           <div className="xl:col-span-1 hq-rise" style={rise(2)}>
             <ApprovalInbox compact />
           </div>
+        </div>
+
+        {/* ── Client Chat ──────────────────────────────────── */}
+        <div className="mb-6 hq-rise" style={rise(3)}>
+          <Panel className="p-6">
+            <SectionHeader label="Signal" title="Client Chat" />
+            <ClientChat />
+          </Panel>
         </div>
 
         {/* ── Draggable panel grid ──────────────────────── */}
