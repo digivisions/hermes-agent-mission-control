@@ -5,7 +5,7 @@ import { Send, Loader2, User, Bot, Clock, CircleAlert } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { EmptyState, Button } from "@/components/ui/kit";
-import { POLLING, PENDING } from "@/lib/requests";
+import { POLLING, PENDING, KIND_CLAUDE_CODE } from "@/lib/requests";
 import { ApprovalCard, type Req } from "@/components/approval-card";
 
 const markdownComponents: Components = {
@@ -99,7 +99,7 @@ function timeLabel(d: string): string {
  * POST; the assistant message only exists once the run finishes). Elapsed time
  * appears past 60s because a silent minute reads as breakage.
  */
-function StatusChip({ msg, now }: { msg: ChatMsg; now: number }) {
+function StatusChip({ msg, now, kind }: { msg: ChatMsg; now: number; kind?: string }) {
   if (!msg.requestId || !msg.requestStatus) return null;
   if (msg.requestStatus === "done") return null;               // silence on the happy path
   const c = CHIP[msg.requestStatus];
@@ -110,13 +110,20 @@ function StatusChip({ msg, now }: { msg: ChatMsg; now: number }) {
     ? Math.floor((now - startedMs) / 1000) : 0;
   const showElapsed = elapsedS > 60;
 
+  const isCc = kind === KIND_CLAUDE_CODE;
+  const label = isCc
+    ? (msg.requestStatus === "running" ? "⚡ Claude Code đang chạy…"
+       : msg.requestStatus === "queued" || msg.requestStatus === "approved" ? "Claude Code · chờ máy Mac"
+       : c.label)
+    : c.label;
+
   const Icon = msg.requestStatus === "failed" ? CircleAlert
              : msg.requestStatus === "running" ? Loader2 : Clock;
 
   return (
     <span className="inline-flex items-center gap-1.5 num text-[10.5px] px-1" style={{ color: c.tone }}>
       <Icon className={`w-3 h-3 ${msg.requestStatus === "running" ? "animate-spin" : ""}`} />
-      {c.label}
+      {label}
       {showElapsed && <span>· {Math.floor(elapsedS / 60)}m {elapsedS % 60}s</span>}
       {msg.requestStatus === "failed" && msg.requestError && (
         <span className="max-w-[22ch] truncate" title={msg.requestError}>· {msg.requestError}</span>

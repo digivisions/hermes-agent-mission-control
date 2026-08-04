@@ -53,6 +53,10 @@ export type DocRef = { title: string; url?: string; note?: string };
  *  is a reference to an external record, not free text. */
 const DOC_URL_RE = /^(https?:\/\/|\/|[a-zA-Z]:[\\/]|~\/|\.\/|\.\.\/)/;
 
+/** An absolute path ON THE MAC (or ~/-relative). The web app runs on the VPS
+ *  and cannot stat it — this is a shape check, not an existence check. */
+export const REPO_PATH_RE = /^(?:\/|~\/)[^\0\n]{1,255}$/;
+
 /** Validates the `documents` field on Client/Project PATCH bodies:
  *  [{ title, url?, note? }]. Returns null (clears the column) for null/undefined
  *  input, or a Fail on the first invalid entry. */

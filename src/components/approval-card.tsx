@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, X, Pencil } from "lucide-react";
 import { Panel, Pill } from "@/components/ui/kit";
+import { KIND_CLAUDE_CODE } from "@/lib/requests";
 
 // ── Types ─────────────────────────────────────────────────
 export interface Req {
@@ -12,6 +13,7 @@ export interface Req {
   flagReason?: string | null;
   model?: string | null; costUsd?: number | null; durationMs?: number | null;
   decidedAt?: string | null; startedAt?: string | null; finishedAt?: string | null;
+  ccModel?: string | null; repoPath?: string | null;
 }
 export interface ClientBadge { slug: string; name: string; accent?: string | null }
 
@@ -188,8 +190,13 @@ export function ApprovalCard({
             )
           )}
           {variant === "rich" && (
-            <div className="num text-[10.5px] text-[var(--text-3)] mt-2 flex flex-wrap gap-x-2.5">
+            <div className="num text-[10.5px] text-[var(--text-3)] mt-2 flex flex-wrap items-center gap-x-2.5">
               {(req.model ?? modelHint) && <span>{req.model ?? modelHint}</span>}
+              {req.kind === KIND_CLAUDE_CODE && (
+                <span title={req.repoPath ?? ""}>
+                  <Pill tone="accent">Claude Code · {req.ccModel ?? "sonnet"}</Pill>
+                </span>
+              )}
               {estCostUsd != null && (
                 <span title="Median cost of this client's last 20 completed runs">
                   ~${estCostUsd.toFixed(4)} · ước tính

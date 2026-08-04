@@ -24,6 +24,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { telegramEnabled, sendMessage, approvalMessage, baseUrl } from "./telegram.mjs";
+import { ccEnabled, ccProbe, ccRun, formatCcResult, ccTarget } from "./claude-code.mjs";
+import { classify, briefToPrompt } from "./triage.mjs";
 
 const execFileP = promisify(execFile);
 const HERMES = process.env.HERMES_BIN || "hermes";
@@ -52,6 +54,22 @@ const STALE_SEC    = Number(process.env.BRIDGE_STALE_SEC || 600);            // 
 const TIMEOUT_SEC  = Math.ceil(RUN_TIMEOUT_MS / 1000) + 60;                   // our own run overran its hard timeout
 const USAGE_DIR    = process.env.BRIDGE_USAGE_DIR || path.join(os.tmpdir(), "hermes-bridge-usage");
 let usageWarned    = false;                                                   // warn-once when usage files never appear
+
+/* ── Phase 3: autonomous triage → Claude Code (Spec E) ── */
+const CC_SSH_TIMEOUT_S    = Number(process.env.CC_SSH_TIMEOUT_S || 900);
+const CC_TIMEOUT_SEC      = CC_SSH_TIMEOUT_S + 120;                            // E19: sweepStale's kind-aware deadline
+const CC_DEFAULT_REPO     = process.env.CC_DEFAULT_REPO || "";
+const CC_OFFLINE_NUDGE_MIN = Number(process.env.CC_OFFLINE_NUDGE_MIN || 30);
+const TRIAGE_BATCH        = Number(process.env.TRIAGE_BATCH || 2);
+const TRIAGE_TIMEOUT_MS   = Number(process.env.TRIAGE_TIMEOUT_MS || 30000);
+const HERMES_TRIAGE_MODEL = process.env.HERMES_TRIAGE_MODEL || "";
+const HERMES_TRIAGE_PROFILE = process.env.HERMES_TRIAGE_PROFILE || "";
+
+let ccOnline = false;
+let ccWarned = false;
+let ccOfflineSince = null;
+let ccNudgeSent = false;
+let triageStats = { classified: 0, exempt: 0, failed: 0, costUsd: 0, routes: { chat: 0, engineering: 0, design: 0, "infra-ops": 0 } };
 
 /* Load hermes-bridge/.env without a dependency. process.env (PM2 ecosystem)
  * always wins — the file only fills gaps. Secrets live here, NOT in the
@@ -131,6 +149,19 @@ function usageColumns(u, startedMs) {
     tokensOut:  Number.isFinite(u?.output_tokens) ? u.output_tokens : null,
     costUsd:    Number.isFinite(u?.estimated_cost_usd) ? u.estimated_cost_usd : null,
     durationMs: Date.now() - startedMs,
+  };
+}
+
+/** Telemetry from the Claude Code runner (E13) — `claude -p --output-format
+ *  json` DOES report cost/tokens, unlike the kickoff's assumption. Used for
+ *  both the success and failure path: a failed run still cost money. */
+function ccColumns(cc, startedMs) {
+  return {
+    model:      cc?.model ?? null,
+    tokensIn:   Number.isFinite(cc?.tokensIn)  ? cc.tokensIn  : null,
+    tokensOut:  Number.isFinite(cc?.tokensOut) ? cc.tokensOut : null,
+    costUsd:    Number.isFinite(cc?.costUsd)   ? cc.costUsd   : null,
+    durationMs: Number.isFinite(cc?.durationMs) ? cc.durationMs : Date.now() - startedMs,
   };
 }
 
@@ -297,6 +328,7 @@ async function maybeDailyBrief() {
 async function runRequest(r) {
   const t0 = Date.now();
   let usage = null;
+  let ccTelemetry = null;
   await emit("run", `Started: ${r.title}`, { level: "info", meta: { requestId: r.id, kind: r.kind } });
   const profileArgs = r.profile ? ["--profile", r.profile] : [];
   try {
@@ -336,28 +368,36 @@ async function runRequest(r) {
       await generateBriefing();
       lastBriefDate = new Date().toISOString().slice(0, 10);
       result = "brief updated";
+    } else if (r.kind === "claude-code") {
+      if (!r.repoPath) throw new Error("claude-code request has no repoPath");
+      const cc = await ccRun({ requestId: r.id, repo: r.repoPath,
+                               model: r.ccModel || "sonnet", prompt: r.prompt || r.title });
+      if (!cc.ok) { ccTelemetry = cc; throw new Error(cc.error || "claude code failed"); }
+      ccTelemetry = cc;
+      result = formatCcResult(cc);
     } else {
       throw new Error(`unknown kind ${r.kind}`);
     }
-    const u = usageColumns(usage, t0);
+    const u = ccTelemetry ? ccColumns(ccTelemetry, t0) : usageColumns(usage, t0);
+    const capped = result.slice(0, 8000);
     await q(
       `UPDATE "AgentRequest"
           SET status='done', result=$2, "finishedAt"=now(), "updatedAt"=now(),
               model=$3, "tokensIn"=$4, "tokensOut"=$5, "costUsd"=$6, "durationMs"=$7
         WHERE id=$1`,
-      [r.id, result.slice(0, 8000), u.model, u.tokensIn, u.tokensOut, u.costUsd, u.durationMs]
+      [r.id, capped, u.model, u.tokensIn, u.tokensOut, u.costUsd, u.durationMs]
     );
-    if (r.profile && (r.kind === "oneshot" || r.kind === "chat")) {
+    if (r.profile && (r.kind === "oneshot" || r.kind === "chat" || r.kind === "claude-code")) {
       await q(
         `INSERT INTO "ChatMessage" (id, client, role, content, "requestId", "createdAt")
          VALUES ($1,$2,'assistant',$3,$4, now())`,
-        [randomUUID(), r.profile, result, r.id]
+        [randomUUID(), r.profile, capped, r.id]
       );
     }
     await emit("run", `Done: ${r.title}`, { level: "up", detail: result.slice(0, 400), meta: { requestId: r.id } });
   } catch (e) {
-    const msg = (e.stderr || e.message || "error").toString().split("\n")[0].slice(0, 600);
-    const u = usageColumns(usage, t0);   // the report is written on failure too
+    const msg = (ccTelemetry?.error || e.stderr || e.message || "error").toString().split("\n")[0].slice(0, 600);
+    const u = ccTelemetry ? ccColumns(ccTelemetry, t0) : usageColumns(usage, t0);   // a failed run still cost money
     await q(
       `UPDATE "AgentRequest"
           SET status='failed', error=$2, "finishedAt"=now(), "updatedAt"=now(),
@@ -367,6 +407,98 @@ async function runRequest(r) {
     );
     await emit("run", `Failed: ${r.title}`, { level: "down", detail: msg, meta: { requestId: r.id } });
     log("request failed:", r.id, msg);
+  }
+}
+
+/**
+ * Classify `chat` rows that have never been triaged (Spec E, E5/E6/E9).
+ * Runs at the head of the queue tick, BEFORE claimBatch() — the only
+ * placement where `queued → awaiting_approval` stays honest, since the row
+ * can never already be `running` here.
+ *
+ * Escalate-only: this function may only raise a verdict toward
+ * claude-code/awaiting_approval. It never writes status='queued' or
+ * sideEffecting=false — that would undo the POST route's own regex belt.
+ */
+async function triageBatch() {
+  const client = await pool.connect();
+  const events = [];
+  try {
+    await client.query("BEGIN");
+    const { rows: locked } = await client.query(
+      `SELECT id, prompt, title, profile, "sideEffecting", status
+         FROM "AgentRequest"
+        WHERE kind = 'chat' AND "triagedAt" IS NULL
+          AND status IN ('queued','awaiting_approval')
+        ORDER BY "createdAt" ASC LIMIT $1
+        FOR UPDATE SKIP LOCKED`,
+      [TRIAGE_BATCH]
+    );
+    if (!locked.length) { await client.query("COMMIT"); return; }
+
+    // Independent calls — Promise.all so a batch of 2 costs ~one LLM round
+    // trip, not two serial ones eating into the 5s tick.
+    const verdicts = await Promise.all(locked.map(async (r) => {
+      const verdict = await classify(r.prompt || r.title || "", {
+        hermes,
+        profile: HERMES_TRIAGE_PROFILE || r.profile,
+        model: HERMES_TRIAGE_MODEL || null,
+        usageDir: USAGE_DIR,
+        requestId: r.id,
+        timeoutMs: TRIAGE_TIMEOUT_MS,
+      }).catch(() => ({ route: "chat", failed: true })); // E7: any throw ⇒ chat, never a stalled queue
+      return { row: r, verdict };
+    }));
+
+    for (const { row: r, verdict } of verdicts) {
+      if (verdict.exempt) triageStats.exempt++;
+      else if (verdict.failed) triageStats.failed++;
+      else triageStats.classified++;
+      if (verdict.route && verdict.route in triageStats.routes) triageStats.routes[verdict.route]++;
+      if (verdict.usagePath) {
+        const u = readUsage(verdict.usagePath);
+        if (Number.isFinite(u?.estimated_cost_usd)) triageStats.costUsd += u.estimated_cost_usd;
+      }
+
+      let repoPath = null;
+      if (verdict.route !== "chat") {
+        const { rows: clientRows } = await client.query(
+          `SELECT "repoPath" FROM "Client" WHERE "hermesProfile" = $1 OR slug = $1 ORDER BY ("hermesProfile" = $1) DESC LIMIT 1`,
+          [r.profile]
+        );
+        repoPath = clientRows[0]?.repoPath || CC_DEFAULT_REPO || null;
+      }
+
+      // E12: no repo (or CC disabled) ⇒ downgrade to chat, whatever the verdict said.
+      if (verdict.route === "chat" || !repoPath || !ccEnabled()) {
+        await client.query(`UPDATE "AgentRequest" SET "triagedAt" = now() WHERE id = $1`, [r.id]);
+        continue;
+      }
+
+      await client.query(
+        `UPDATE "AgentRequest"
+            SET kind = 'claude-code', "ccModel" = $2, "repoPath" = $3, prompt = $4,
+                "triagedAt" = now(), "sideEffecting" = true,
+                status = CASE WHEN status = 'awaiting_approval' THEN status ELSE 'awaiting_approval' END,
+                "flagReason" = COALESCE("flagReason", $5)
+          WHERE id = $1`,
+        [r.id, verdict.model, repoPath, briefToPrompt(verdict, r.prompt || r.title || ""), verdict.reason || null]
+      );
+      events.push({ requestId: r.id, title: r.title, route: verdict.route, model: verdict.model });
+    }
+
+    await client.query("COMMIT");
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch { /* connection may be gone */ }
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  // Emitted after commit, and only for non-chat verdicts — chat is the
+  // common case and would drown the activity feed.
+  for (const ev of events) {
+    await emit("run", `Triaged: ${ev.title}`, { level: "info", meta: { requestId: ev.requestId, route: ev.route, model: ev.model } });
   }
 }
 
@@ -381,6 +513,10 @@ async function runRequest(r) {
  * The claim itself flips status to 'running' and stamps claimedBy/claimedAt,
  * so ownership is durable the moment the transaction commits — before any
  * subprocess starts.
+ *
+ * Spec E gates: a 'chat' row must be triaged first (triagedAt set), and a
+ * 'claude-code' row is only claimable while the Mac is reachable — an
+ * offline Mac means the row simply is not claimed (E3, hold-don't-fail).
  */
 async function claimBatch() {
   const client = await pool.connect();
@@ -389,10 +525,12 @@ async function claimBatch() {
     const { rows: locked } = await client.query(
       `SELECT id FROM "AgentRequest"
         WHERE status IN ('queued','approved')
+          AND (kind <> 'chat' OR "triagedAt" IS NOT NULL)
+          AND (kind <> 'claude-code' OR $2)
         ORDER BY "createdAt" ASC
         LIMIT $1
         FOR UPDATE SKIP LOCKED`,
-      [CLAIM_BATCH]
+      [CLAIM_BATCH, ccOnline]
     );
     if (!locked.length) { await client.query("COMMIT"); return []; }
     const { rows: claimed } = await client.query(
@@ -450,13 +588,13 @@ async function sweepStale() {
   const { rows: timedOut } = await q(
     `UPDATE "AgentRequest"
         SET status='failed',
-            error=COALESCE(NULLIF(error,''), 'timeout: exceeded ' || $2 || 's with no result'),
+            error=COALESCE(NULLIF(error,''), 'timeout: exceeded ' || (CASE WHEN kind = 'claude-code' THEN $3 ELSE $2 END) || 's with no result'),
             "finishedAt"=now(), "updatedAt"=now()
       WHERE status='running'
         AND "claimedBy" = $1
-        AND COALESCE("claimedAt","startedAt") < now() - make_interval(secs => $2)
+        AND COALESCE("claimedAt","startedAt") < now() - make_interval(secs => CASE WHEN kind = 'claude-code' THEN $3 ELSE $2 END)
       RETURNING id, title`,
-    [INSTANCE, TIMEOUT_SEC]
+    [INSTANCE, TIMEOUT_SEC, CC_TIMEOUT_SEC]
   );
 
   for (const r of [...dead, ...timedOut]) {
@@ -506,6 +644,7 @@ async function notifyPending() {
         WHERE id IN (
           SELECT id FROM "AgentRequest"
            WHERE status = 'awaiting_approval' AND "notifiedAt" IS NULL
+             AND (kind <> 'chat' OR "triagedAt" IS NOT NULL)
            ORDER BY "createdAt" ASC
            LIMIT $1
            FOR UPDATE SKIP LOCKED
@@ -551,7 +690,9 @@ async function heartbeat() {
        COUNT(*) FILTER (WHERE status = 'failed'
                           AND "createdAt" > now() - interval '24 hours') AS failed24h,
        COUNT(*) FILTER (WHERE status = 'expired'
-                          AND "createdAt" > now() - interval '24 hours') AS expired24h
+                          AND "createdAt" > now() - interval '24 hours') AS expired24h,
+       COUNT(*) FILTER (WHERE status IN ('queued','approved')
+                          AND kind = 'claude-code')              AS "ccQueued"
      FROM "AgentRequest"`
   );
   const c = rows[0] || {};
@@ -567,12 +708,58 @@ async function heartbeat() {
     awaiting:   Number(c.awaiting   || 0),
     failed24h:  Number(c.failed24h  || 0),
     expired24h: Number(c.expired24h || 0),
+    ccEnabled:  ccEnabled(),
+    ccOnline,
+    ccQueued:   Number(c.ccQueued   || 0),
   });
+}
+
+/**
+ * Reachability probe (Spec E, E3/E-6 step 7-8). Warn-once, never throw.
+ * An unreachable Mac must never crash the mirror tick — a `claude-code` row
+ * simply stays unclaimed (claimBatch()'s `$2 = ccOnline` gate) until the
+ * next probe finds the Mac back.
+ */
+async function ccReachabilityTick() {
+  if (!ccEnabled()) return;
+  const was = ccOnline;
+  ccOnline = await ccProbe();
+
+  if (ccOnline && !was) {
+    log(`cc: Mac reachable via ${ccTarget()} (runner ok)`);
+    ccWarned = false; ccOfflineSince = null; ccNudgeSent = false;
+  }
+  if (!ccOnline && !ccWarned) {
+    ccWarned = true;
+    ccOfflineSince = ccOfflineSince ?? Date.now();
+    log("cc: Mac unreachable — claude-code requests will hold (queued, not failed)");
+  }
+  if (!ccOnline && ccOfflineSince && !ccNudgeSent &&
+      Date.now() - ccOfflineSince > CC_OFFLINE_NUDGE_MIN * 60000) {
+    const { rows } = await q(
+      `SELECT COUNT(*)::int AS n FROM "AgentRequest" WHERE status = 'queued' AND kind = 'claude-code'`
+    );
+    const n = rows[0]?.n || 0;
+    if (n > 0 && telegramEnabled()) {
+      const ok = await sendMessage(`${n} tác vụ Claude Code đang chờ máy Mac online`);
+      if (ok) ccNudgeSent = true; // one nudge; doesn't repeat until reconnect resets the flag
+    }
+  }
+}
+
+/**
+ * Cumulative triage counters (Spec E, E22/E-8), written once per mirror
+ * tick — not per classification, so a burst of chat traffic doesn't turn
+ * into a write storm. Replaces §6's cost *estimate* with a measured figure.
+ */
+async function writeTriageStats() {
+  await setStore("triage-stats", { ...triageStats, updatedAt: new Date().toISOString() });
 }
 
 /* ─────────────── loops ─────────────── */
 async function mirrorTick() {
   try { await sweepStale();     } catch (e) { log("sweepStale err", e.message); }
+  try { await ccReachabilityTick(); } catch (e) { log("cc probe err", e.message); }
   try { await mirrorKanban();   } catch (e) { log("mirrorKanban err", e.message); }
   try { await mirrorCrons();    } catch (e) { log("mirrorCrons err", e.message); }
   try { await mirrorHealth();   } catch (e) { log("mirrorHealth err", e.message); }
@@ -580,6 +767,7 @@ async function mirrorTick() {
   try { await mirrorCost();     } catch (e) { log("mirrorCost err", e.message); }
   try { await maybeDailyBrief();} catch (e) { log("maybeDailyBrief err", e.message); }
   try { await heartbeat();      } catch (e) { log("heartbeat err", e.message); }
+  try { await writeTriageStats();} catch (e) { log("triageStats err", e.message); }
 }
 
 async function main() {
@@ -592,6 +780,7 @@ async function main() {
   setInterval(() => mirrorTick().catch((e) => log("mirror loop", e.message)), MIRROR_MS);
   // queue loop
   const tick = async () => {
+    try { await triageBatch(); } catch (e) { log("triage loop", e.message); }
     try { await processQueue(); } catch (e) { log("queue loop", e.message); }
     try { await notifyPending(); } catch (e) { log("notify loop", e.message); }
     finally { setTimeout(tick, POLL_MS); }

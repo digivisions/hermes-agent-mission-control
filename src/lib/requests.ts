@@ -78,3 +78,23 @@ export function detectSideEffect(text: string): string | null {
   for (const r of FLAG_RULES) if (r.re.test(text)) return r.label;
   return null;
 }
+
+/* ── Kind vocabulary (Spec E, E21) ───────────────────────────────
+ * `kind` is a free string in the DB, not an enum — cron.* is a family.
+ * These constants exist so the UI never string-matches 'claude-code'
+ * in five places. */
+export const KIND_CLAUDE_CODE = "claude-code";
+
+/** Model aliases the triage classifier may choose. Anything else ⇒ sonnet. */
+export const CC_MODELS = ["fable", "opus", "sonnet"] as const;
+export type CcModel = (typeof CC_MODELS)[number];
+export const isCcModel = (m: unknown): m is CcModel =>
+  (CC_MODELS as readonly string[]).includes(String(m));
+
+/** Human label for a chip. Falls back to the raw kind — an unknown kind
+ *  should read as itself, never as blank. */
+export function kindLabel(kind: string): string {
+  if (kind === KIND_CLAUDE_CODE) return "Claude Code";
+  if (kind.startsWith("cron.")) return `Cron · ${kind.slice(5)}`;
+  return kind;
+}

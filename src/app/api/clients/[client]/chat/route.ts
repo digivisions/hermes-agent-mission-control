@@ -24,6 +24,7 @@ export async function GET(
           sideEffecting: true, status: true, result: true, error: true,
           flagReason: true, model: true, costUsd: true, durationMs: true,
           decidedAt: true, createdAt: true, startedAt: true, finishedAt: true,
+          ccModel: true, repoPath: true,
         },
       })
     : [];

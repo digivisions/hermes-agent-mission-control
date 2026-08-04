@@ -451,7 +451,9 @@ model ClientPulseAlert {
 model AgentRequest {
   id            String    @id @default(cuid())
   origin        String    @default("web") // "web" | "hermes"
-  kind          String    @default("oneshot") // "oneshot" | "kanban" | "chat"
+  // "oneshot" | "chat" | "kanban" | "cron.*" | "memory.write"
+  //   | "briefing.generate" | "claude-code"
+  kind          String    @default("oneshot")
   title         String
   prompt        String?
   profile       String? // Hermes profile to run with (e.g. "klaily"); null = default profile
@@ -481,11 +483,21 @@ model AgentRequest {
   // ── Push notification (Telegram; hermes-bridge/telegram.mjs) ──
   notifiedAt DateTime? // claimed-then-sent; NULL = never pushed. Rolled back to NULL if the send fails.
 
+  // ── Phase 3: autonomous triage ──
+  triagedAt DateTime? // classifier verdict applied. NULL + kind='chat' = not yet triaged;
+                      //   claimBatch() and notifyPending() both skip such rows.
+  ccModel   String?   // Claude Code model alias chosen by the classifier: fable | opus | sonnet.
+                      //   Distinct from `model`, which the bridge fills post-run with the
+                      //   canonical id from the CLI's modelUsage block (e.g. 'claude-sonnet-5').
+  repoPath  String?   // snapshot of Client.repoPath at triage time. The registry may change
+                      //   later; a run's record of where it ran must not.
+
   @@index([status])
   @@index([createdAt])
   @@index([profile, createdAt]) // per-client run history (SPEC B right rail)
   @@index([status, claimedAt]) // stale sweep
   @@index([status, notifiedAt]) // notifier claim scan
+  @@index([status, triagedAt]) // triage scan (mirrors the existing [status, notifiedAt])
 }
 
 // ─── Per-client chat (Phase 1) ───────────────────────────────────
@@ -565,6 +577,10 @@ model Client {
   hermesProfile String? // Hermes profile slug; null = no profile provisioned
   model         String   @default("deepseek-v4-flash")
   metricsConfig Json? // { provider: 'shopify', shop: '...' } — read by nobody until Phase 5
+  repoPath      String? // absolute path ON THE MAC to this client's git repo, e.g.
+                        //   '/Users/annguyen/Claude/Projects/Klaily'. NULL ⇒ no Claude Code
+                        //   offload for this client; triage downgrades the verdict to chat (E12).
+                        //   The web app cannot validate existence — the path is on another machine.
   status        String   @default("unconfigured") // 'active' | 'unconfigured' | 'archived'
   accent        String? // hex, for the client index card chip
   description   String? // one-line blurb on the index card

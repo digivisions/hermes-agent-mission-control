@@ -14,6 +14,7 @@ export interface ClientCardLike {
   description: string | null;
   contextNotes?: string | null;
   documents?: DocRef[] | null;
+  repoPath?: string | null;
 }
 
 function slugify(s: string) {
@@ -38,6 +39,7 @@ export function ClientEditor({ mode, initial, onClose, onSaved }: {
   const [accent, setAccent] = useState(initial?.accent ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [contextNotes, setContextNotes] = useState(initial?.contextNotes ?? "");
+  const [repoPath, setRepoPath] = useState(initial?.repoPath ?? "");
   const [documents, setDocuments] = useState<DocRef[]>(initial?.documents ?? []);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -51,7 +53,7 @@ export function ClientEditor({ mode, initial, onClose, onSaved }: {
     setSaving(true);
     setErrors({});
     try {
-      const body = { name, slug, type, status, accent: accent || null, description: description || null, contextNotes: contextNotes || null, documents };
+      const body = { name, slug, type, status, accent: accent || null, description: description || null, contextNotes: contextNotes || null, repoPath: repoPath || null, documents };
       const res = mode === "create"
         ? await fetch("/api/clients", {
             method: "POST",
@@ -140,6 +142,13 @@ export function ClientEditor({ mode, initial, onClose, onSaved }: {
         hint="Markdown. Briefs, standing instructions, links to folders."
       >
         <TextArea rows={10} value={contextNotes} onChange={(e) => setContextNotes(e.target.value)} />
+      </Field>
+      <Field
+        label="Repo path"
+        error={errors.repoPath}
+        hint="Đường dẫn tuyệt đối trên máy Mac — bật offload sang Claude Code. Để trống nếu chưa có repo."
+      >
+        <TextInput value={repoPath} onChange={(e) => setRepoPath(e.target.value)} placeholder="/Users/annguyen/Claude/Projects/Klaily" />
       </Field>
       <DocumentsField value={documents} onChange={setDocuments} />
     </Modal>
