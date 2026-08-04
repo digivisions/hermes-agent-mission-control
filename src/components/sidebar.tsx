@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import {
-  Home, Bot, Briefcase, Server, Menu, X, LayoutGrid, FolderKanban, Layers,
+  Home, Bot, Briefcase, Server, Menu, X, LayoutGrid, FolderKanban, Layers, CheckSquare,
 } from "lucide-react";
 
 const navGroups = [
@@ -17,9 +17,10 @@ const navGroups = [
   {
     name: "Work",
     items: [
-      { href: "/clients",  label: "Clients",  icon: Briefcase },
-      { href: "/projects", label: "Projects", icon: FolderKanban },
-      { href: "/tasks",    label: "Tasks",    icon: LayoutGrid },
+      { href: "/clients",   label: "Clients",   icon: Briefcase },
+      { href: "/projects",  label: "Projects",  icon: FolderKanban },
+      { href: "/tasks",     label: "Tasks",     icon: LayoutGrid },
+      { href: "/approvals", label: "Approvals", icon: CheckSquare },
     ],
   },
   {

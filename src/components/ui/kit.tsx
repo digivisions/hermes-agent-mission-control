@@ -301,6 +301,23 @@ export function Field({
   );
 }
 
+/* ── FieldGroup — fieldset/legend sibling of Field.
+      Field wraps its child in a <label>, which is wrong for a radiogroup
+      (a control that isn't a single form element); FieldGroup uses a
+      <fieldset>/<legend> pair instead. ── */
+export function FieldGroup({
+  label, hint, error, children,
+}: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="block border-0 p-0 m-0">
+      <legend className="eyebrow !text-[9.5px] p-0">{label}</legend>
+      <div className="mt-1.5">{children}</div>
+      {error   && <span className="block mt-1 text-[11.5px]" style={{ color: "var(--down)" }}>{error}</span>}
+      {!error && hint && <span className="block mt-1 text-[11px] text-[var(--text-3)]">{hint}</span>}
+    </fieldset>
+  );
+}
+
 const inputCls =
   "w-full rounded-[10px] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition-colors " +
   "focus:border-[var(--accent)] disabled:opacity-50";

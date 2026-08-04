@@ -1,7 +1,8 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   SLUG_RE, PROJECT_STATUSES, PROJECT_TYPES, PRIORITIES, HEX_RE,
-  normText, normList, badRequest, type Fail,
+  normText, normList, normDocuments, badRequest, type Fail,
 } from "@/lib/registry";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,8 @@ export async function POST(req: Request) {
 
   const accent = normText(body.accent);
   if (accent && !HEX_RE.test(accent)) errors.push({ field: "accent", message: "hex colour, e.g. #60a5fa" });
+  const docs = normDocuments(body.documents);
+  if (docs.error) errors.push(docs.error);
   if (errors.length) return badRequest(errors);
 
   // New projects land at the top of the board — that's why he just made one.
@@ -52,6 +55,7 @@ export async function POST(req: Request) {
         location:     normText(body.location),
         description:  normText(body.description),
         contextNotes: normText(body.contextNotes),
+        documents:    docs.value ?? Prisma.JsonNull,
       },
     });
     return Response.json({ project }, { status: 201 });

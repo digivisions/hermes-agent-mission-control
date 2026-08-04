@@ -22,6 +22,11 @@ import {
   CornerDownLeft,
   Search,
   Check,
+  Briefcase,
+  FolderKanban,
+  CheckSquare,
+  Server,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,6 +38,11 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Clients", href: "/clients", icon: Briefcase },
+  { label: "Projects", href: "/projects", icon: FolderKanban },
+  { label: "Approvals", href: "/approvals", icon: CheckSquare },
+  { label: "Infrastructure", href: "/infrastructure", icon: Server },
+  { label: "Content OS", href: "/content-os", icon: Layers },
   { label: "X", href: "/x", icon: Twitter },
   { label: "Articles", href: "/articles", icon: FileText },
   { label: "YouTube", href: "/youtube", icon: Youtube },

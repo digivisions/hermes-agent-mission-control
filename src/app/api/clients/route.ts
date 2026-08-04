@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  SLUG_RE, CLIENT_STATUSES, CLIENT_TYPES, HEX_RE,
-  normText, badRequest, type Fail,
+  SLUG_RE, CLIENT_STATUSES, CLIENT_TYPES, HEX_RE, REPO_PATH_RE,
+  normText, normDocuments, badRequest, type Fail,
 } from "@/lib/registry";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+/** Archived clients are hidden by default; ?all=1 includes them (the edit
+ *  modal needs to reach one to un-archive it). */
+export async function GET(req: Request) {
+  const all = new URL(req.url).searchParams.get("all") === "1";
   const clients = await prisma.client.findMany({
-    where: { status: { not: "archived" } },
+    where: all ? {} : { status: { not: "archived" } },
     orderBy: [{ status: "asc" }, { name: "asc" }],
   });
   const profiles = clients.map((c) => c.hermesProfile ?? c.slug);
@@ -80,6 +84,13 @@ export async function POST(req: Request) {
   const accent = normText(body.accent);
   if (accent && !HEX_RE.test(accent)) errors.push({ field: "accent", message: "hex colour, e.g. #34d399" });
 
+  const repoPath = normText(body.repoPath);
+  if (repoPath && !REPO_PATH_RE.test(repoPath))
+    errors.push({ field: "repoPath", message: "absolute path on the Mac, e.g. /Users/annguyen/Claude/Projects/Klaily" });
+
+  const docs = normDocuments(body.documents);
+  if (docs.error) errors.push(docs.error);
+
   if (errors.length) return badRequest(errors);
 
   try {
@@ -89,6 +100,8 @@ export async function POST(req: Request) {
         description:  normText(body.description),
         contextNotes: normText(body.contextNotes),
         hermesProfile: normText(body.hermesProfile),
+        repoPath,
+        documents: docs.value ?? Prisma.JsonNull,
         ...(normText(body.model) ? { model: normText(body.model)! } : {}),
       },
     });

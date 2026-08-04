@@ -212,6 +212,8 @@ textarea, input {
   --hq-warn: var(--warn);
   --hq-elev-1: rgba(58, 80, 107, 0.04);
   --hq-elev-2: rgba(58, 80, 107, 0.08);
+  --hq-accent: var(--accent);
+  --hq-text-2: var(--text-2);
 }
 
 /* tabular/mono numerals — everywhere numbers compare or align */

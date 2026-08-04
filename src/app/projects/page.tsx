@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FolderKanban, Clock, GripVertical, Pencil, FileText, Plus, FolderOpen } from "lucide-react";
+import { FolderKanban, Clock, GripVertical, Pencil, Plus, FolderOpen } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
@@ -9,10 +9,12 @@ import {
   SortableContext, useSortable, arrayMove, rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Panel, Pill, Button, EmptyState, Modal } from "@/components/ui/kit";
+import { Panel, Pill, Button, EmptyState, Modal, Eyebrow, TextInput } from "@/components/ui/kit";
 import { ProjectEditor, type ProjectCardLike } from "@/components/project-editor";
 import { FileCenter } from "@/components/file-center";
+import { plainPreview } from "@/components/markdown";
 import type { DocRef } from "@/components/documents-field";
+import { label } from "@/lib/labels";
 
 interface Project {
   slug: string; name: string; type: string; status: string; priority: string;
@@ -44,6 +46,7 @@ function timeAgo(d: string | null) {
 
 function SortableProject({ id, project, onEdit, onFiles }: { id: string; project: Project; onEdit: (p: Project) => void; onFiles: (p: Project) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const accent = project.accent ?? "#94a3b8";
   return (
     <div
       ref={setNodeRef}
@@ -54,7 +57,7 @@ function SortableProject({ id, project, onEdit, onFiles }: { id: string; project
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-[var(--r-md)] flex items-center justify-center shrink-0"
-              style={{ background: "var(--hq-elev-2)", color: "var(--hq-accent)" }}>
+              style={{ background: "color-mix(in srgb, " + accent + " 15%, transparent)", color: accent }}>
               <FolderKanban className="w-4 h-4" />
             </div>
             <div className="min-w-0">
@@ -65,15 +68,15 @@ function SortableProject({ id, project, onEdit, onFiles }: { id: string; project
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {project.location && (
-              <button
-                aria-label={`Files for ${project.name}`}
-                onClick={() => onFiles(project)}
-                className="p-1 rounded text-[var(--text-3)] hover:text-[var(--text)] transition-colors"
-              >
-                <FolderOpen className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              aria-label={`Files for ${project.name}`}
+              onClick={() => project.location && onFiles(project)}
+              disabled={!project.location}
+              title={project.location ? undefined : "Thêm Location để xem tài liệu"}
+              className="p-1 rounded text-[var(--text-3)] hover:text-[var(--text)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-[var(--text-3)]"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+            </button>
             <button
               aria-label={`Edit ${project.name}`}
               onClick={() => onEdit(project)}
@@ -93,20 +96,33 @@ function SortableProject({ id, project, onEdit, onFiles }: { id: string; project
         </div>
 
         <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <Pill tone={statusTone[project.status] || "neutral"}>{project.status}</Pill>
-          <Pill tone={prioTone[project.priority] || "neutral"}>{project.priority}</Pill>
+          <Pill tone={statusTone[project.status] || "neutral"}>{label("status", project.status)}</Pill>
+          <Pill tone={prioTone[project.priority] || "neutral"}>{label("priority", project.priority)}</Pill>
           {project.tags.slice(0, 2).map(t => (
             <Pill key={t} className="!text-[var(--hq-text-ghost)]">{t}</Pill>
           ))}
-          {project.contextNotes && (
-            <Pill className="!text-[var(--text-3)]">
-              <FileText className="w-3 h-3" /> context
-            </Pill>
-          )}
-          {project.documents && project.documents.length > 0 && (
-            <Pill className="!text-[var(--text-3)]">📎 {project.documents.length} hồ sơ</Pill>
+          {project.documents && project.documents.length > 0 && project.documents.slice(0, 3).map((d, i) => (
+            d.url ? (
+              <a key={i} href={d.url} target="_blank" rel="noreferrer">
+                <Pill className="!text-[var(--text-3)]">📎 {d.title}</Pill>
+              </a>
+            ) : (
+              <Pill key={i} className="!text-[var(--text-3)]">📎 {d.title}</Pill>
+            )
+          ))}
+          {project.documents && project.documents.length > 3 && (
+            <Pill className="!text-[var(--text-3)]">+{project.documents.length - 3}</Pill>
           )}
         </div>
+
+        {project.contextNotes && (
+          <div className="mb-4 pb-4 border-b border-[var(--hq-hairline)]">
+            <Eyebrow className="!text-[9px]">Context</Eyebrow>
+            <p className="mt-1 text-[11.5px] text-[var(--text-3)] leading-relaxed line-clamp-2">
+              {plainPreview(project.contextNotes, 180)}
+            </p>
+          </div>
+        )}
 
         {project.overview && (
           <p className="text-[13px] text-[var(--hq-text-2)] leading-relaxed line-clamp-3 mb-5">{project.overview}</p>
@@ -118,7 +134,7 @@ function SortableProject({ id, project, onEdit, onFiles }: { id: string; project
             <div className="space-y-2">
               {project.nextActions.slice(0, 3).map((a, i) => (
                 <div key={i} className="text-[12px] text-[var(--hq-text-2)] leading-snug flex gap-2.5">
-                  <span className="num text-[var(--hq-accent)] shrink-0">{i + 1}.</span>
+                  <span className="num shrink-0" style={{ color: accent }}>{i + 1}.</span>
                   <span>{a}</span>
                 </div>
               ))}
@@ -139,11 +155,13 @@ export default function ProjectsPage() {
   const [order, setOrder] = useState<string[]>([]);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [filesFor, setFilesFor] = useState<Project | null>(null);
+  const [query, setQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const load = useCallback(() => {
-    fetch("/api/projects")
+    fetch(`/api/projects${showArchived ? "?all=1" : ""}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.projects) {
@@ -154,7 +172,7 @@ export default function ProjectsPage() {
       })
       .catch(() => setError("Failed to load projects"))
       .finally(() => setLoaded(true));
-  }, []);
+  }, [showArchived]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -173,6 +191,11 @@ export default function ProjectsPage() {
   };
 
   const ordered = order.length === projects.length ? order.map(id => projects.find(p => p.slug === id)!).filter(Boolean) : projects;
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? ordered.filter(p => p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q))
+    : ordered;
+  const filteredIds = filtered.map(p => p.slug);
 
   return (
     <div className="relative z-10 w-full mx-auto pb-20">
@@ -182,17 +205,23 @@ export default function ProjectsPage() {
           <h1 className="text-[36px] font-semibold tracking-[-0.02em] leading-none text-[var(--hq-text)]" style={{ fontFamily: "var(--font-display)" }}>Projects</h1>
           <p className="num text-[var(--hq-text-ghost)] text-[12.5px] mt-3">{projects.length} internal projects · drag to reorder</p>
         </div>
-        <Button variant="primary" onClick={() => setEditor({ mode: "create" })}>
-          <Plus className="w-3.5 h-3.5" /> New project
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm theo tên hoặc mô tả…" className="w-56" />
+          <Button size="sm" onClick={() => setShowArchived(s => !s)}>
+            {showArchived ? "Ẩn mục lưu trữ" : "Hiện mục lưu trữ"}
+          </Button>
+          <Button variant="primary" onClick={() => setEditor({ mode: "create" })}>
+            <Plus className="w-3.5 h-3.5" /> New project
+          </Button>
+        </div>
       </div>
 
       {error && <div className="text-[12.5px] text-[var(--hq-down)] mb-4">{error}</div>}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-        <SortableContext items={order} strategy={rectSortingStrategy}>
+        <SortableContext items={filteredIds} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {ordered.map(p => (
+            {filtered.map(p => (
               <SortableProject key={p.slug} id={p.slug} project={p} onEdit={(proj) => setEditor({ mode: "edit", project: proj })} onFiles={(proj) => setFilesFor(proj)} />
             ))}
           </div>
@@ -206,6 +235,9 @@ export default function ProjectsPage() {
           hint="Projects are Digital Visions' own work. Client work lives on /clients."
           action={<Button variant="primary" onClick={() => setEditor({ mode: "create" })}>New project</Button>}
         />
+      )}
+      {loaded && projects.length > 0 && filtered.length === 0 && (
+        <EmptyState icon={<FolderKanban />} title="No matches" hint="Try a different search." />
       )}
 
       {editor && (

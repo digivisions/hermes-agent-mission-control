@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Modal, Field, TextInput, TextArea, Select, Button } from "@/components/ui/kit";
+import { Modal, Field, FieldGroup, TextInput, TextArea, Button } from "@/components/ui/kit";
 import { CLIENT_STATUSES, CLIENT_TYPES } from "@/lib/registry";
 import { DocumentsField, type DocRef } from "@/components/documents-field";
+import { ColorField } from "@/components/ui/color-field";
+import { PillPicker } from "@/components/ui/pill-picker";
+import { label } from "@/lib/labels";
 
 export interface ClientCardLike {
   slug: string;
@@ -113,44 +116,40 @@ export function ClientEditor({ mode, initial, onClose, onSaved }: {
       <Field label="Name" error={errors.name}>
         <TextInput value={name} onChange={(e) => onNameChange(e.target.value)} />
       </Field>
-      <Field
-        label="Slug"
-        error={errors.slug}
-        hint={mode === "edit" ? "Immutable — it's the Hermes profile and chat key" : undefined}
-      >
-        <TextInput
-          value={slug}
-          disabled={mode === "edit"}
-          onChange={(e) => { setSlug(slugify(e.target.value)); setSlugTouched(true); }}
-        />
-      </Field>
-      <Field label="Type" error={errors.type}>
-        <Select options={CLIENT_TYPES} value={type} onChange={(e) => setType(e.target.value)} />
-      </Field>
-      <Field label="Status" error={errors.status}>
-        <Select options={CLIENT_STATUSES} value={status} onChange={(e) => setStatus(e.target.value)} />
-      </Field>
-      <Field label="Accent" error={errors.accent} hint="Hex colour, e.g. #34d399">
-        <TextInput value={accent} onChange={(e) => setAccent(e.target.value)} placeholder="#34d399" />
+      <div className="-mt-2 text-[10.5px] text-[var(--text-3)]">slug: {slug || "—"}</div>
+      <FieldGroup label="Status" error={errors.status}>
+        <PillPicker options={CLIENT_STATUSES} value={status} onChange={setStatus} labelFor={(v) => label("status", v)} />
+      </FieldGroup>
+      <FieldGroup label="Type" error={errors.type}>
+        <PillPicker options={CLIENT_TYPES} value={type} onChange={setType} labelFor={(v) => label("clientType", v)} />
+      </FieldGroup>
+      <Field label="Accent" error={errors.accent}>
+        <ColorField value={accent} onChange={setAccent} />
       </Field>
       <Field label="Description" error={errors.description}>
         <TextInput value={description} onChange={(e) => setDescription(e.target.value)} />
       </Field>
-      <Field
-        label="Context notes"
-        error={errors.contextNotes}
-        hint="Markdown. Briefs, standing instructions, links to folders."
-      >
-        <TextArea rows={10} value={contextNotes} onChange={(e) => setContextNotes(e.target.value)} />
-      </Field>
-      <Field
-        label="Repo path"
-        error={errors.repoPath}
-        hint="Đường dẫn tuyệt đối trên máy Mac — bật offload sang Claude Code. Để trống nếu chưa có repo."
-      >
-        <TextInput value={repoPath} onChange={(e) => setRepoPath(e.target.value)} placeholder="/Users/annguyen/… — để trống nếu chưa có repo" />
-      </Field>
-      <DocumentsField value={documents} onChange={setDocuments} />
+
+      <details className="pt-1">
+        <summary className="eyebrow !text-[9.5px] cursor-pointer select-none">Nâng cao</summary>
+        <div className="mt-3 space-y-3.5">
+          <Field
+            label="Context notes"
+            error={errors.contextNotes}
+            hint="Markdown. Briefs, standing instructions, links to folders."
+          >
+            <TextArea rows={6} value={contextNotes} onChange={(e) => setContextNotes(e.target.value)} />
+          </Field>
+          <Field
+            label="Repo path"
+            error={errors.repoPath}
+            hint="Đường dẫn tuyệt đối trên máy Mac — bật offload sang Claude Code. Để trống nếu chưa có repo."
+          >
+            <TextInput value={repoPath} onChange={(e) => setRepoPath(e.target.value)} placeholder="/Users/annguyen/… — để trống nếu chưa có repo" />
+          </Field>
+          <DocumentsField value={documents} onChange={setDocuments} />
+        </div>
+      </details>
     </Modal>
   );
 }
