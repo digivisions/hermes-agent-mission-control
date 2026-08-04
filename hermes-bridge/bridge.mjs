@@ -580,7 +580,7 @@ async function sweepStale() {
             "finishedAt"=now(), "updatedAt"=now()
       WHERE status='running'
         AND "claimedBy" IS DISTINCT FROM $1
-        AND COALESCE("claimedAt","startedAt") < now() - make_interval(secs => $2)
+        AND COALESCE("claimedAt","startedAt") < now() - make_interval(secs => $2::int)
       RETURNING id, title`,
     [INSTANCE, STALE_SEC]
   );
@@ -592,7 +592,7 @@ async function sweepStale() {
             "finishedAt"=now(), "updatedAt"=now()
       WHERE status='running'
         AND "claimedBy" = $1
-        AND COALESCE("claimedAt","startedAt") < now() - make_interval(secs => CASE WHEN kind = 'claude-code' THEN $3 ELSE $2 END)
+        AND COALESCE("claimedAt","startedAt") < now() - make_interval(secs => CASE WHEN kind = 'claude-code' THEN $3::int ELSE $2::int END)
       RETURNING id, title`,
     [INSTANCE, TIMEOUT_SEC, CC_TIMEOUT_SEC]
   );
