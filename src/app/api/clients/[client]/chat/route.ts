@@ -38,6 +38,7 @@ export async function POST(
   const { client } = await params;
   const body = await req.json().catch(() => null);
   const message = typeof body?.message === "string" ? body.message.trim() : "";
+  const sideEffecting = body?.sideEffecting === true;
   if (!message) {
     return NextResponse.json({ ok: false, error: "message is required" }, { status: 400 });
   }
@@ -53,16 +54,23 @@ export async function POST(
       title: message.length > 80 ? `${message.slice(0, 80)}…` : message,
       prompt: message,
       profile: client,
-      sideEffecting: false,
-      status: "queued",
+      sideEffecting,
+      status: sideEffecting ? "awaiting_approval" : "queued",
       createdAt: now,
       updatedAt: now,
     },
   });
 
+  // Link the user message to its request so GET can surface the live
+  // requestStatus (queued/approved/running/awaiting_approval) for typing UX.
+  const linked = await prisma.chatMessage.update({
+    where: { id: chatMessage.id },
+    data: { requestId: agentRequest.id },
+  });
+
   return NextResponse.json({
     ok: true,
-    messageId: chatMessage.id,
+    messageId: linked.id,
     requestId: agentRequest.id,
   });
 }

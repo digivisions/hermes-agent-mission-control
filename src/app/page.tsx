@@ -6,6 +6,8 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { Sparkline } from "@/components/sparkline";
 import { HermesBriefing } from "@/components/hermes-briefing";
 import { ApprovalInbox } from "@/components/approval-inbox";
+import { ClientChat } from "@/components/client-chat";
+import { Panel, SectionHeader } from "@/components/ui/kit";
 
 // ── Types ─────────────────────────────────────────────────
 interface HLPosition {
@@ -556,6 +558,14 @@ export default function Dashboard() {
           <div className="xl:col-span-1 hq-rise" style={rise(6)}>
             <ApprovalInbox compact />
           </div>
+        </div>
+
+        {/* ── Client Chat ──────────────────────────────────── */}
+        <div className="mt-5 hq-rise" style={rise(7)}>
+          <Panel className="p-5">
+            <SectionHeader label="Signal" title="Client Chat" />
+            <ClientChat />
+          </Panel>
         </div>
 
         {/* ── Signal ──────────────────────────────────────── */}

@@ -16,7 +16,6 @@ import {
   Cpu,
   BookOpen,
   Workflow,
-  MessageSquare,
   Menu,
   X,
 } from "lucide-react";
@@ -43,7 +42,6 @@ const navGroups = [
     name: "Data",
     items: [
       { href: "/client-pulse", label: "Client Pulse", icon: HeartPulse },
-      { href: "/clients/klaily", label: "Klaily Chat", icon: MessageSquare },
     ],
   },
   {
