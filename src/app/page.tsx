@@ -8,6 +8,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { HermesBriefing } from "@/components/hermes-briefing";
 import { AssistantPanel } from "@/components/assistant-panel";
+import { ClaudeUsageCard } from "@/components/claude-usage-card";
 import { Eyebrow, Panel, Pill, SectionHeader } from "@/components/ui/kit";
 
 // ── Types ─────────────────────────────────────────────────
@@ -133,7 +134,7 @@ function InfraPanel({ infra }: { infra: InfraData | null }) {
 function InfrastructureHealthPanel({ data }: { data: InfraHealth | null }) {
   const hosts = data?.hosts ?? [];
   return (
-    <Panel className="p-6 mb-6 hq-rise" style={rise(11)}>
+    <Panel className="p-6 mb-6 hq-rise" style={rise(12)}>
       <SectionHeader label="Infrastructure" title="Fleet health" />
       {hosts.length === 0 ? (
         <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-10 text-center">no data yet</div>
@@ -362,6 +363,7 @@ export default function Dashboard() {
         </Panel>
       </div>
 
+      <ClaudeUsageCard />
       <InfrastructureHealthPanel data={infraHealth} />
     </div>
   );

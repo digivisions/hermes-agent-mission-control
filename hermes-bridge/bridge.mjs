@@ -24,7 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { telegramEnabled, sendMessage, approvalMessage, baseUrl, getUpdates } from "./telegram.mjs";
-import { ccEnabled, ccProbe, ccRun, formatCcResult, ccTarget } from "./claude-code.mjs";
+import { ccEnabled, ccProbe, ccRun, ccUsageProbe, formatCcResult, ccTarget } from "./claude-code.mjs";
 import { classify, briefToPrompt } from "./triage.mjs";
 import { collectInfra } from "./infra.mjs";
 import * as assistant from "./assistant.mjs";
@@ -103,6 +103,19 @@ let ccOnline = false;
 let ccWarned = false;
 let ccOfflineSince = null;
 let triageStats = { classified: 0, exempt: 0, failed: 0, costUsd: 0, routes: { chat: 0, engineering: 0, design: 0, "infra-ops": 0 } };
+
+/* ── Phase G: Claude Code usage gauge (Spec G) ──
+ * All state here is best-effort, PM2-restart-safe (a lost `rawNote`/throttle
+ * clock just means one extra read or one dropped breadcrumb, never a crash),
+ * and MUST stay isolated from `ccOnline` — see ccUsageTick()'s docstring. */
+const CC_USAGE_THROTTLE_MS = Math.max(15 * 60 * 1000, Number(process.env.CC_USAGE_THROTTLE_MS || 20 * 60 * 1000));
+const CC_USAGE_WRITE_MIN_MS = 5 * 60 * 1000;
+const CC_RATE_LIMIT_RE = /grace-(5h|7d)-utilization|(?:^|\D)429(?:\D|$)|usage limit|rate limit|quota exceed/i;
+let ccUsageLastAttemptAt = 0;      // ms epoch — bridge-side 20min floor (G-D5)
+let ccUsageNextAttemptAt = 0;      // ms epoch — pushed out by a Mac-reported retryAfterS
+let ccUsageLastWriteAt = 0;
+let ccUsageLastPayloadJson = null; // for the byte-identical write-throttle check
+let ccRateLimitNote = null;        // short derived string only (G-R5) — most recent event
 
 const DB_URL = process.env.DATABASE_URL || "";
 if (!DB_URL) { console.error("DATABASE_URL is required (use the direct postgres:// URL, not a prisma:// Accelerate URL)"); process.exit(1); }
@@ -498,6 +511,15 @@ async function runRequest(r) {
     );
     await emit("run", `Failed: ${r.title}`, { level: "down", detail: msg, meta: { requestId: r.id } });
     log("request failed:", r.id, msg);
+    // Spec G, G-4: a claude-code failure that reads as a rate limit is a
+    // breadcrumb for the usage gauge, not just a failed row — never lets
+    // this flip ccOnline (same isolation rule as G-D4; this only ever
+    // touches the ccRateLimitNote module var that ccUsageTick() reads).
+    if (r.kind === "claude-code" && CC_RATE_LIMIT_RE.test(msg)) {
+      const win = ccRateLimitWindow(msg);
+      ccRateLimitNote = `rate_limit at ${new Date().toISOString()} (${win})`;
+      await emit("status", `Claude Code rate limit (${win})`, { level: "warn" });
+    }
   }
 }
 
@@ -838,6 +860,97 @@ async function ccReachabilityTick() {
         if (ok) await writeState({ ccNudgeSentAt: new Date().toISOString() }); // one nudge; doesn't repeat until reconnect resets the flag
       }
     }
+  }
+
+  await ccUsageTick();
+}
+
+/** "5h"/"7d" out of a short error/note string; defaults to the window we
+ *  actually gauge (5h) when the text doesn't say which. */
+function ccRateLimitWindow(text) {
+  return /7d/i.test(String(text)) ? "7d" : "5h";
+}
+
+/**
+ * Claude Code usage gauge (Spec G, G-D1/G-D5). Called ONLY from the tail of
+ * ccReachabilityTick(), i.e. strictly after `ccOnline` has already been
+ * assigned for this tick — every line below this point runs in its own
+ * try/catch and can, at worst, leave `claude-usage` stale. It must never be
+ * able to throw back into ccReachabilityTick and it must never assign to
+ * `ccOnline` (G-D4). A cosmetic dashboard gauge is not allowed to take down
+ * the Claude Code offload queue.
+ */
+async function ccUsageTick() {
+  if (!ccEnabled()) return;
+  const now = Date.now();
+  if (now < ccUsageNextAttemptAt) return;
+  if (now - ccUsageLastAttemptAt < CC_USAGE_THROTTLE_MS) return;
+  ccUsageLastAttemptAt = now;
+  ccUsageNextAttemptAt = now + CC_USAGE_THROTTLE_MS;
+
+  try {
+    let r = null;
+    try {
+      r = await ccUsageProbe();
+    } catch (e) {
+      log("cc-usage: probe threw —", e.message);
+    }
+
+    const prev = (await getStore("claude-usage")) || {};
+    const { rows } = await q(
+      `SELECT "costUsd", "createdAt" FROM "AgentRequest"
+        WHERE kind='claude-code' AND "costUsd" IS NOT NULL
+        ORDER BY "createdAt" DESC LIMIT 1`
+    );
+    const lastCostUsd = rows[0] ? Number(rows[0].costUsd) : (prev.lastCostUsd ?? null);
+    const lastRunAt = rows[0] ? rows[0].createdAt.toISOString() : (prev.lastRunAt ?? null);
+
+    let payload;
+    if (r && Number.isFinite(r.pct)) {
+      // A successful read. Clear the rate-limit breadcrumb once utilization
+      // is well under 100 again (G-4) — a bar this low can't be why a run failed.
+      if (r.pct < 90) ccRateLimitNote = null;
+      payload = {
+        fetchedAt: r.fetchedAt || new Date().toISOString(),
+        source: "oauth-usage-api", // G-2's ground-truth correction: keychain OAuth API, not a sqlite cache
+        parserV: Number.isFinite(r.parserV) ? r.parserV : 1,
+        pct: r.pct,
+        windowHours: r.windowHours ?? 5,
+        resetsAt: r.resetsAt ?? null,
+        lastCostUsd, lastRunAt,
+        rawNote: ccRateLimitNote,
+      };
+      log(`cc-usage: read ok — pct=${r.pct} windowHours=${payload.windowHours}`);
+    } else {
+      // Transport failure (r.error) or the script's own failure (r.pct===null
+      // + r.note) — either way this is a degraded payload: keep every prior
+      // known number, never delete the key, never zero the percentage (G-D2).
+      const reason = r?.error || r?.note || "usage probe returned nothing";
+      log(`cc-usage: read failed — ${reason}`);
+      if (r?.retryAfterS) {
+        ccUsageNextAttemptAt = Math.max(ccUsageNextAttemptAt, now + r.retryAfterS * 1000);
+        // A 429 from the usage API is itself a rate-limit event worth surfacing (G-4 step 6).
+        ccRateLimitNote = `rate_limit at ${new Date().toISOString()} (${ccRateLimitWindow(reason)})`;
+      }
+      payload = {
+        ...prev,
+        pct: prev.pct ?? null,
+        parserV: Number.isFinite(prev.parserV) ? prev.parserV : 1,
+        source: "unavailable",
+        rawNote: ccRateLimitNote ?? prev.rawNote ?? null,
+        lastCostUsd, lastRunAt,
+      };
+    }
+
+    const json = JSON.stringify(payload);
+    const identical = json === ccUsageLastPayloadJson;
+    if (!identical || now - ccUsageLastWriteAt >= CC_USAGE_WRITE_MIN_MS) {
+      await setStore("claude-usage", payload);
+      ccUsageLastPayloadJson = json;
+      ccUsageLastWriteAt = now;
+    }
+  } catch (e) {
+    log("cc-usage: tick failed —", e.message);
   }
 }
 

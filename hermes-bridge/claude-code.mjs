@@ -31,6 +31,10 @@ const CC_NODE_BIN      = process.env.CC_NODE_BIN || "/Users/annguyen/.hermes/nod
 const CC_RUNNER        = process.env.CC_RUNNER || "/Users/annguyen/.hermes/bin/hermes-cc-run.mjs";
 const CC_SSH_TIMEOUT_S = Number(process.env.CC_SSH_TIMEOUT_S || 900);
 const CC_PROBE_TIMEOUT_S = Number(process.env.CC_PROBE_TIMEOUT_S || 15);
+// Spec G, G-D1: usage reads piggyback on the same SSH transport ccProbe
+// already opens — a sibling script on the Mac, not a second connection.
+const CC_USAGE_RUNNER  = process.env.CC_USAGE_RUNNER || "/Users/annguyen/.hermes/bin/hermes-cc-usage.mjs";
+const CC_USAGE_TIMEOUT_S = Number(process.env.CC_USAGE_TIMEOUT_S || 15);
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -48,8 +52,9 @@ export function ccEnabled() {
   return Boolean(CC_SSH_HOST && CC_SSH_USER && CC_RUNNER);
 }
 
-/** Fixed argv — no request field ever appears in a template literal here. */
-function sshArgs() {
+/** Fixed argv — no request field ever appears in a template literal here.
+ *  `script` picks which Mac-side .mjs runs; defaults to the job runner. */
+function sshArgs(script = CC_RUNNER) {
   const args = ["-p", String(CC_SSH_PORT)];
   if (CC_SSH_KEY) args.push("-i", CC_SSH_KEY);
   args.push(
@@ -59,7 +64,7 @@ function sshArgs() {
     "-o", "ServerAliveInterval=30",
     "-o", "ServerAliveCountMax=4",
     `${CC_SSH_USER}@${CC_SSH_HOST}`,
-    "--", CC_NODE_BIN, CC_RUNNER
+    "--", CC_NODE_BIN, script
   );
   return args;
 }
@@ -70,7 +75,7 @@ function sshArgs() {
  * timeout, non-zero exit with empty stdout, unparseable stdout) resolves to
  * `{ok:false, error}` so a wedged Mac never throws out of the caller.
  */
-function sshRun(payload, timeoutMs) {
+function sshRun(payload, timeoutMs, script = CC_RUNNER) {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
@@ -83,7 +88,7 @@ function sshRun(payload, timeoutMs) {
       resolve(result);
     };
     try {
-      child = spawn("ssh", sshArgs(), { stdio: ["pipe", "pipe", "pipe"] });
+      child = spawn("ssh", sshArgs(script), { stdio: ["pipe", "pipe", "pipe"] });
     } catch (e) {
       finish({ ok: false, error: `ssh spawn failed: ${String(e.message || e)}` });
       return;
@@ -127,6 +132,20 @@ export function ccTarget() {
 export async function ccProbe() {
   const r = await sshRun({ ping: true }, CC_PROBE_TIMEOUT_S * 1000);
   return r?.ok === true;
+}
+
+/**
+ * Reads Claude Code subscription usage (Spec G, G-D1) over a second ssh
+ * round trip to the sibling `hermes-cc-usage.mjs` script — same argv shape
+ * as ccProbe, zero new credentials. hermes-cc-usage.mjs always exits 0 and
+ * prints exactly one JSON object, so a transport failure (bad ssh/node path,
+ * timeout) is the only way this resolves to `{ok:false, error}`; everything
+ * else — including the script's own failure modes — comes back as its
+ * documented `{pct, ...}` / `{pct:null, note, ...}` shape for the caller to
+ * interpret. Never rejects.
+ */
+export async function ccUsageProbe() {
+  return sshRun({}, CC_USAGE_TIMEOUT_S * 1000, CC_USAGE_RUNNER);
 }
 
 export async function ccRun({ requestId, repo, model, prompt }) {

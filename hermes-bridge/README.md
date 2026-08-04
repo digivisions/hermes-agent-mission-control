@@ -60,3 +60,11 @@ Manual trigger for debugging:
 INSERT INTO "AgentRequest"(id,origin,kind,title,prompt,status,"createdAt","updatedAt")
 VALUES ('t-digest-1','hermes','digest','Krisna digest (manual)','{"slot":"ondemand"}','queued',now(),now());
 ```
+
+## Claude usage (Spec G)
+
+DataStore key `claude-usage`: { fetchedAt, source, pct, windowHours, resetsAt, lastCostUsd, lastRunAt, rawNote, parserV } — usage % (never raw tokens; limit_dollars is null), 5h/7d rolling window, reset time. Read on the Mac via the OAuth usage API (keychain token, read-only, never rotated) through `~/.hermes/bin/hermes-cc-usage.mjs` — ground truth is the API, NOT a local sqlite cache. Throttles: 20-min read floor (15-min configurable) + 5-min write throttle; honor retryAfterS on 429. **Invariant (G-D4): a usage-read failure must never flip ccOnline.** parserV:1; if the API shape changes, pct:null + note, never a guess.
+
+Manual probe: `ssh <mac-host> 'node ~/.hermes/bin/hermes-cc-usage.mjs'`
+
+**Cost correction (G-1):** the runner now records cache_creation/cache_read/total_cost_usd. Pre-fix capture understated real cost by ~4 orders of magnitude (a "say OK" run is input 2 + output 4 tokens but cache 28891+23909, total_cost_usd ≈ 0.18). Any step change in cost charts is this bug fix, not a spike.

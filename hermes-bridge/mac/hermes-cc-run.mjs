@@ -11,7 +11,8 @@
  *          "prompt": "...", "timeoutS": 900 }
  *
  *   out: { "ok": true,  "output": "...", "costUsd": 0.28, "tokensIn": 2,
- *          "tokensOut": 4, "model": "claude-sonnet-5", "durationMs": 3048,
+ *          "tokensOut": 4, "cacheCreation": 28891, "cacheRead": 23909,
+ *          "model": "claude-sonnet-5", "durationMs": 3048,
  *          "numTurns": 1, "branch": "hermes/cc-<id>", "worktree": "/path",
  *          "diffStat": "...", "patchPath": "/path/.hermes-cc.patch",
  *          "permissionDenials": 0 }
@@ -226,11 +227,20 @@ async function main() {
   const modelUsageKeys = parsed.modelUsage ? Object.keys(parsed.modelUsage) : [];
   const resolvedModel = modelUsageKeys[0] || model;
 
+  // Cache tokens are the actual Claude Code workload (routinely 10-100x input/output);
+  // total_cost_usd is Anthropic's own figure and already prices cache-write vs cache-read
+  // correctly — never derive a cost from token counts (Spec G, G-D3).
+  const usage = parsed.usage || {};
+  const cacheCreationRaw = usage.cache_creation_input_tokens ?? usage.cache_creation ?? null;
+  const cacheReadRaw = usage.cache_read_input_tokens ?? usage.cache_read ?? null;
+
   const telemetry = {
     output: typeof parsed.result === "string" ? parsed.result.slice(0, CC_OUTPUT_MAX) : "",
     costUsd: Number.isFinite(parsed.total_cost_usd) ? parsed.total_cost_usd : null,
-    tokensIn: Number.isFinite(parsed.usage?.input_tokens) ? parsed.usage.input_tokens : null,
-    tokensOut: Number.isFinite(parsed.usage?.output_tokens) ? parsed.usage.output_tokens : null,
+    tokensIn: Number.isFinite(usage.input_tokens) ? usage.input_tokens : null,
+    tokensOut: Number.isFinite(usage.output_tokens) ? usage.output_tokens : null,
+    cacheCreation: Number.isFinite(cacheCreationRaw) ? cacheCreationRaw : null,
+    cacheRead: Number.isFinite(cacheReadRaw) ? cacheReadRaw : null,
     model: resolvedModel,
     durationMs: Number.isFinite(parsed.duration_ms) ? parsed.duration_ms : durationMsWall,
     numTurns: Number.isFinite(parsed.num_turns) ? parsed.num_turns : null,
