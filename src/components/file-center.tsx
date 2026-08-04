@@ -25,7 +25,7 @@ function fmtSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function FileCenter({ client }: { client: string }) {
+export function FileCenter({ basePath }: { basePath: string }) {
   const [recent, setRecent] = useState<RecentFile[] | null>(null);
   const [noRepo, setNoRepo] = useState(false);
 
@@ -39,13 +39,13 @@ export function FileCenter({ client }: { client: string }) {
 
   const loadRecent = useCallback(async () => {
     try {
-      const r = await fetch(`/api/clients/${client}/files?recent=1`);
+      const r = await fetch(`${basePath}?recent=1`);
       if (!r.ok) return;
       const j = await r.json();
       setNoRepo(!!j.noRepo);
       setRecent(j.files ?? []);
     } catch { /* next poll retries */ }
-  }, [client]);
+  }, [basePath]);
 
   useEffect(() => {
     loadRecent();
@@ -56,14 +56,14 @@ export function FileCenter({ client }: { client: string }) {
   const loadEntries = useCallback(async (path: string) => {
     setEntries(null);
     try {
-      const r = await fetch(`/api/clients/${client}/files?path=${encodeURIComponent(path)}`);
+      const r = await fetch(`${basePath}?path=${encodeURIComponent(path)}`);
       const j = await r.json();
       if (j.noRepo) { setNoRepo(true); setEntries([]); return; }
       setEntries(Array.isArray(j.entries) ? j.entries : []);
     } catch {
       setEntries([]);
     }
-  }, [client]);
+  }, [basePath]);
 
   const openBrowse = () => {
     setBrowseOpen(true);
@@ -81,11 +81,11 @@ export function FileCenter({ client }: { client: string }) {
     setPreviewFromBrowse(fromBrowse);
     setPreview({ kind: "loading" });
     if (isImageExt(path)) {
-      setPreview({ kind: "image", name: path.split("/").pop() || path, src: `/api/clients/${client}/files?img=${encodeURIComponent(path)}` });
+      setPreview({ kind: "image", name: path.split("/").pop() || path, src: `${basePath}?img=${encodeURIComponent(path)}` });
       return;
     }
     try {
-      const r = await fetch(`/api/clients/${client}/files?file=${encodeURIComponent(path)}`);
+      const r = await fetch(`${basePath}?file=${encodeURIComponent(path)}`);
       const j = await r.json();
       if (!r.ok) { setPreview({ kind: "error", message: j.error || "Không tải được file" }); return; }
       if (j.binary) { setPreview({ kind: "binary", name: j.name }); return; }
@@ -93,7 +93,7 @@ export function FileCenter({ client }: { client: string }) {
     } catch {
       setPreview({ kind: "error", message: "Không tải được file" });
     }
-  }, [client]);
+  }, [basePath]);
 
   const closePreview = () => { setPreviewPath(null); setPreview(null); };
   const backFromPreview = () => {

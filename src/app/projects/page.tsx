@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FolderKanban, Clock, GripVertical, Pencil, FileText, Plus } from "lucide-react";
+import { FolderKanban, Clock, GripVertical, Pencil, FileText, Plus, FolderOpen } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
@@ -9,8 +9,9 @@ import {
   SortableContext, useSortable, arrayMove, rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Panel, Pill, Button, EmptyState } from "@/components/ui/kit";
+import { Panel, Pill, Button, EmptyState, Modal } from "@/components/ui/kit";
 import { ProjectEditor, type ProjectCardLike } from "@/components/project-editor";
+import { FileCenter } from "@/components/file-center";
 import type { DocRef } from "@/components/documents-field";
 
 interface Project {
@@ -41,7 +42,7 @@ function timeAgo(d: string | null) {
   return "just now";
 }
 
-function SortableProject({ id, project, onEdit }: { id: string; project: Project; onEdit: (p: Project) => void }) {
+function SortableProject({ id, project, onEdit, onFiles }: { id: string; project: Project; onEdit: (p: Project) => void; onFiles: (p: Project) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   return (
     <div
@@ -64,6 +65,15 @@ function SortableProject({ id, project, onEdit }: { id: string; project: Project
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {project.location && (
+              <button
+                aria-label={`Files for ${project.name}`}
+                onClick={() => onFiles(project)}
+                className="p-1 rounded text-[var(--text-3)] hover:text-[var(--text)] transition-colors"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               aria-label={`Edit ${project.name}`}
               onClick={() => onEdit(project)}
@@ -128,6 +138,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<string[]>([]);
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [filesFor, setFilesFor] = useState<Project | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -182,7 +193,7 @@ export default function ProjectsPage() {
         <SortableContext items={order} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {ordered.map(p => (
-              <SortableProject key={p.slug} id={p.slug} project={p} onEdit={(proj) => setEditor({ mode: "edit", project: proj })} />
+              <SortableProject key={p.slug} id={p.slug} project={p} onEdit={(proj) => setEditor({ mode: "edit", project: proj })} onFiles={(proj) => setFilesFor(proj)} />
             ))}
           </div>
         </SortableContext>
@@ -205,6 +216,10 @@ export default function ProjectsPage() {
           onClose={() => setEditor(null)}
         />
       )}
+
+      <Modal open={filesFor !== null} onClose={() => setFilesFor(null)} title={filesFor ? `Tài liệu — ${filesFor.name}` : "Tài liệu"} wide>
+        {filesFor && <FileCenter basePath={`/api/projects/${filesFor.slug}/files`} />}
+      </Modal>
     </div>
   );
 }

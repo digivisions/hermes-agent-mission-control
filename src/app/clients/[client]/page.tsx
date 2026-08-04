@@ -171,7 +171,7 @@ export default function ClientWorkspace({ params }: { params: Promise<{ client: 
           </div>
 
           {/* File Center: real files from the client's repo on the Mac (SSH) */}
-          <FileCenter client={slug} />
+          <FileCenter basePath={`/api/clients/${slug}/files`} />
 
           {/* Documents: reference links only — no upload/storage yet */}
           {c?.documents && c.documents.length > 0 && (
