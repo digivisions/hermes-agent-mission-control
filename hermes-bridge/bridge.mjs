@@ -41,6 +41,15 @@ const BRIEF_PROMPT =
   "Keep every item short, concrete, and specific. Omit a section if it has nothing.";
 let lastBriefDate = null;
 
+/* ── instance identity + bus-hygiene knobs ── */
+const INSTANCE     = `${os.hostname()}:${process.pid}`;
+const BOOT_ISO     = new Date().toISOString();
+const CLAIM_BATCH  = Number(process.env.BRIDGE_CLAIM_BATCH || 3);
+const STALE_SEC    = Number(process.env.BRIDGE_STALE_SEC || 600);            // 10 min: another instance's run is dead
+const TIMEOUT_SEC  = Math.ceil(RUN_TIMEOUT_MS / 1000) + 60;                   // our own run overran its hard timeout
+const USAGE_DIR    = process.env.BRIDGE_USAGE_DIR || path.join(os.tmpdir(), "hermes-bridge-usage");
+let usageWarned    = false;                                                   // warn-once when usage files never appear
+
 const DB_URL = process.env.DATABASE_URL || "";
 if (!DB_URL) { console.error("DATABASE_URL is required (use the direct postgres:// URL, not a prisma:// Accelerate URL)"); process.exit(1); }
 if (DB_URL.startsWith("prisma://") || DB_URL.startsWith("prisma+")) {
@@ -73,6 +82,38 @@ async function setStore(key, data) {
      ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, "updatedAt" = now()`,
     [key, JSON.stringify(data)]
   );
+}
+
+/**
+ * Read and delete the JSON usage report `hermes --usage-file` leaves behind.
+ * Returns null if it isn't there — which is the expected outcome if HERMES_BIN
+ * is a `docker exec` wrapper and USAGE_DIR isn't bind-mounted into the
+ * container. We warn once and carry on with NULL telemetry columns; a missing
+ * cost number must never fail an otherwise-successful agent run.
+ */
+function readUsage(file) {
+  let raw;
+  try { raw = fs.readFileSync(file, "utf8"); }
+  catch {
+    if (!usageWarned) {
+      usageWarned = true;
+      log(`usage: no report at ${file} — telemetry columns will stay NULL. ` +
+          `If HERMES_BIN is a docker wrapper, bind-mount BRIDGE_USAGE_DIR into the container.`);
+    }
+    return null;
+  }
+  try { return JSON.parse(raw); } catch { return null; }
+  finally { try { fs.unlinkSync(file); } catch { /* best effort */ } }
+}
+
+function usageColumns(u, startedMs) {
+  return {
+    model:      u?.model ?? null,
+    tokensIn:   Number.isFinite(u?.input_tokens)  ? u.input_tokens  : null,
+    tokensOut:  Number.isFinite(u?.output_tokens) ? u.output_tokens : null,
+    costUsd:    Number.isFinite(u?.estimated_cost_usd) ? u.estimated_cost_usd : null,
+    durationMs: Date.now() - startedMs,
+  };
 }
 
 /* ─────────────── PULL: mirror Hermes → Postgres ─────────────── */
@@ -236,13 +277,21 @@ async function maybeDailyBrief() {
 
 /* ─────────────── PUSH: run website requests via Hermes ─────────────── */
 async function runRequest(r) {
-  await q(`UPDATE "AgentRequest" SET status='running', "startedAt"=now(), "updatedAt"=now() WHERE id=$1`, [r.id]);
+  const t0 = Date.now();
+  let usage = null;
   await emit("run", `Started: ${r.title}`, { level: "info", meta: { requestId: r.id, kind: r.kind } });
   const profileArgs = r.profile ? ["--profile", r.profile] : [];
   try {
     let result = "";
     if (r.kind === "oneshot" || r.kind === "chat") {
-      result = (await hermes([...profileArgs, "-z", r.prompt || r.title], { timeout: RUN_TIMEOUT_MS })).trim();
+      // --usage-file is one-shot only and is written even on failure, so it is
+      // the one place token/cost telemetry is available without re-plumbing
+      // the bridge onto an OpenAI-compatible endpoint.
+      fs.mkdirSync(USAGE_DIR, { recursive: true });
+      const usagePath = path.join(USAGE_DIR, `${r.id}.json`);
+      result = (await hermes([...profileArgs, "--usage-file", usagePath, "-z", r.prompt || r.title],
+        { timeout: RUN_TIMEOUT_MS })).trim();
+      usage = readUsage(usagePath);
     } else if (r.kind === "kanban") {
       result = (await hermes([...profileArgs, "kanban", "--board", BOARD, "create", "--json", r.title], { timeout: 20000 })).trim();
     } else if (r.kind.startsWith("cron.")) {
@@ -272,8 +321,14 @@ async function runRequest(r) {
     } else {
       throw new Error(`unknown kind ${r.kind}`);
     }
-    await q(`UPDATE "AgentRequest" SET status='done', result=$2, "finishedAt"=now(), "updatedAt"=now() WHERE id=$1`,
-      [r.id, result.slice(0, 8000)]);
+    const u = usageColumns(usage, t0);
+    await q(
+      `UPDATE "AgentRequest"
+          SET status='done', result=$2, "finishedAt"=now(), "updatedAt"=now(),
+              model=$3, "tokensIn"=$4, "tokensOut"=$5, "costUsd"=$6, "durationMs"=$7
+        WHERE id=$1`,
+      [r.id, result.slice(0, 8000), u.model, u.tokensIn, u.tokensOut, u.costUsd, u.durationMs]
+    );
     if (r.profile && (r.kind === "oneshot" || r.kind === "chat")) {
       await q(
         `INSERT INTO "ChatMessage" (id, client, role, content, "requestId", "createdAt")
@@ -284,31 +339,159 @@ async function runRequest(r) {
     await emit("run", `Done: ${r.title}`, { level: "up", detail: result.slice(0, 400), meta: { requestId: r.id } });
   } catch (e) {
     const msg = (e.stderr || e.message || "error").toString().split("\n")[0].slice(0, 600);
-    await q(`UPDATE "AgentRequest" SET status='failed', error=$2, "finishedAt"=now(), "updatedAt"=now() WHERE id=$1`, [r.id, msg]);
+    const u = usageColumns(usage, t0);   // the report is written on failure too
+    await q(
+      `UPDATE "AgentRequest"
+          SET status='failed', error=$2, "finishedAt"=now(), "updatedAt"=now(),
+              model=$3, "tokensIn"=$4, "tokensOut"=$5, "costUsd"=$6, "durationMs"=$7
+        WHERE id=$1`,
+      [r.id, msg, u.model, u.tokensIn, u.tokensOut, u.costUsd, u.durationMs]
+    );
     await emit("run", `Failed: ${r.title}`, { level: "down", detail: msg, meta: { requestId: r.id } });
     log("request failed:", r.id, msg);
   }
 }
 
+/**
+ * Claim up to CLAIM_BATCH runnable rows atomically.
+ *
+ * SELECT … FOR UPDATE SKIP LOCKED inside one transaction is the whole
+ * point: a second bridge instance (or this one after a PM2 restart that
+ * left the old process briefly alive) sees the locked rows, skips them,
+ * and claims different work. Side-effecting commands can never run twice.
+ *
+ * The claim itself flips status to 'running' and stamps claimedBy/claimedAt,
+ * so ownership is durable the moment the transaction commits — before any
+ * subprocess starts.
+ */
+async function claimBatch() {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: locked } = await client.query(
+      `SELECT id FROM "AgentRequest"
+        WHERE status IN ('queued','approved')
+        ORDER BY "createdAt" ASC
+        LIMIT $1
+        FOR UPDATE SKIP LOCKED`,
+      [CLAIM_BATCH]
+    );
+    if (!locked.length) { await client.query("COMMIT"); return []; }
+    const { rows: claimed } = await client.query(
+      `UPDATE "AgentRequest"
+          SET status='running', "claimedAt"=now(), "claimedBy"=$2,
+              "startedAt"=now(), "updatedAt"=now()
+        WHERE id = ANY($1::text[])
+      RETURNING *`,
+      [locked.map((r) => r.id), INSTANCE]
+    );
+    await client.query("COMMIT");
+    return claimed;
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch { /* connection may be gone */ }
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 async function processQueue() {
-  const { rows } = await q(
-    `SELECT * FROM "AgentRequest" WHERE status IN ('queued','approved') ORDER BY "createdAt" ASC LIMIT 3`
-  );
+  const rows = await claimBatch();
   for (const r of rows) await runRequest(r);
+}
+
+/**
+ * Two failure modes, one sweep:
+ *
+ *  (a) STALE — a row is 'running' but its owner is not us. Either a second
+ *      instance died, or this process is a restart of the one that claimed it
+ *      (new pid ⇒ new INSTANCE string). The subprocess is gone; the row would
+ *      sit 'running' forever. Fail it.
+ *
+ *  (b) TIMEOUT — a row we own has outlived RUN_TIMEOUT_MS + 60s. execFile's
+ *      own timeout should have fired and taken the catch path; if we are here,
+ *      the process is wedged (hung docker exec, stuck TTY). Fail it so the
+ *      chat UI stops showing a typing indicator forever.
+ *
+ * COALESCE("claimedAt","startedAt") covers rows that entered 'running' before
+ * this code shipped and therefore have no claimedAt.
+ */
+async function sweepStale() {
+  const { rows: dead } = await q(
+    `UPDATE "AgentRequest"
+        SET status='failed',
+            error=COALESCE(NULLIF(error,''), 'stale: bridge restarted or instance died (claimedBy=' || COALESCE("claimedBy",'unknown') || ')'),
+            "finishedAt"=now(), "updatedAt"=now()
+      WHERE status='running'
+        AND "claimedBy" IS DISTINCT FROM $1
+        AND COALESCE("claimedAt","startedAt") < now() - make_interval(secs => $2)
+      RETURNING id, title`,
+    [INSTANCE, STALE_SEC]
+  );
+
+  const { rows: timedOut } = await q(
+    `UPDATE "AgentRequest"
+        SET status='failed',
+            error=COALESCE(NULLIF(error,''), 'timeout: exceeded ' || $2 || 's with no result'),
+            "finishedAt"=now(), "updatedAt"=now()
+      WHERE status='running'
+        AND "claimedBy" = $1
+        AND COALESCE("claimedAt","startedAt") < now() - make_interval(secs => $2)
+      RETURNING id, title`,
+    [INSTANCE, TIMEOUT_SEC]
+  );
+
+  for (const r of [...dead, ...timedOut]) {
+    log("swept stale request:", r.id, r.title);
+    await emit("run", `Swept: ${r.title}`, { level: "down", meta: { requestId: r.id, reason: "stale" } });
+  }
+  return dead.length + timedOut.length;
+}
+
+/**
+ * One DataStore row the dashboard can read to answer "is the bridge alive?".
+ * Written every mirror tick (30s), so `now - lastSeen > 90s` means trouble.
+ * Queue depths ride along so the cockpit's status strip needs one fetch.
+ */
+async function heartbeat() {
+  const { rows } = await q(
+    `SELECT
+       COUNT(*) FILTER (WHERE status IN ('queued','approved'))  AS queued,
+       COUNT(*) FILTER (WHERE status = 'running')               AS running,
+       COUNT(*) FILTER (WHERE status = 'awaiting_approval')     AS awaiting,
+       COUNT(*) FILTER (WHERE status = 'failed'
+                          AND "createdAt" > now() - interval '24 hours') AS failed24h
+     FROM "AgentRequest"`
+  );
+  const c = rows[0] || {};
+  await setStore("bridge-heartbeat", {
+    lastSeen: new Date().toISOString(),
+    host: os.hostname(),
+    pid: process.pid,
+    instance: INSTANCE,
+    board: BOARD,
+    bootedAt: BOOT_ISO,
+    queued:    Number(c.queued    || 0),
+    running:   Number(c.running   || 0),
+    awaiting:  Number(c.awaiting  || 0),
+    failed24h: Number(c.failed24h || 0),
+  });
 }
 
 /* ─────────────── loops ─────────────── */
 async function mirrorTick() {
-  try { await mirrorKanban(); } catch (e) { log("mirrorKanban err", e.message); }
-  try { await mirrorCrons(); } catch (e) { log("mirrorCrons err", e.message); }
-  try { await mirrorHealth(); } catch (e) { log("mirrorHealth err", e.message); }
-  try { await mirrorWiki(); } catch (e) { log("mirrorWiki err", e.message); }
-  try { await mirrorCost(); } catch (e) { log("mirrorCost err", e.message); }
-  try { await maybeDailyBrief(); } catch (e) { log("maybeDailyBrief err", e.message); }
+  try { await sweepStale();     } catch (e) { log("sweepStale err", e.message); }
+  try { await mirrorKanban();   } catch (e) { log("mirrorKanban err", e.message); }
+  try { await mirrorCrons();    } catch (e) { log("mirrorCrons err", e.message); }
+  try { await mirrorHealth();   } catch (e) { log("mirrorHealth err", e.message); }
+  try { await mirrorWiki();     } catch (e) { log("mirrorWiki err", e.message); }
+  try { await mirrorCost();     } catch (e) { log("mirrorCost err", e.message); }
+  try { await maybeDailyBrief();} catch (e) { log("maybeDailyBrief err", e.message); }
+  try { await heartbeat();      } catch (e) { log("heartbeat err", e.message); }
 }
 
 async function main() {
-  log(`hermes-bridge up · board=${BOARD} · poll=${POLL_MS}ms · mirror=${MIRROR_MS}ms`);
+  log(`hermes-bridge up · instance=${INSTANCE} · board=${BOARD} · poll=${POLL_MS}ms · mirror=${MIRROR_MS}ms · usageDir=${USAGE_DIR}`);
   await emit("status", "Bridge connected", { level: "up" });
   await mirrorTick();
   setInterval(() => mirrorTick().catch((e) => log("mirror loop", e.message)), MIRROR_MS);

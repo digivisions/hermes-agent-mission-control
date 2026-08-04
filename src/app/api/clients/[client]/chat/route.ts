@@ -43,6 +43,20 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "message is required" }, { status: 400 });
   }
 
+  // The bridge will happily `hermes --profile <anything>`. Validate the slug
+  // against the registry so a typo'd or hostile route param can never spawn
+  // a run against a profile that isn't ours.
+  const registered = await prisma.client.findUnique({ where: { slug: client } });
+  if (!registered) {
+    return NextResponse.json({ ok: false, error: `unknown client '${client}'` }, { status: 404 });
+  }
+  if (!registered.hermesProfile) {
+    return NextResponse.json(
+      { ok: false, error: `client '${client}' has no Hermes profile — run scripts/provision-profile.sh ${client}` },
+      { status: 409 }
+    );
+  }
+
   const chatMessage = await prisma.chatMessage.create({
     data: { client, role: "user", content: message },
   });
@@ -53,7 +67,7 @@ export async function POST(
       kind: "chat",
       title: message.length > 80 ? `${message.slice(0, 80)}…` : message,
       prompt: message,
-      profile: client,
+      profile: registered.hermesProfile,
       sideEffecting,
       status: sideEffecting ? "awaiting_approval" : "queued",
       createdAt: now,
