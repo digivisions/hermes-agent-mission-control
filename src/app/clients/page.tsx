@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Briefcase, Wallet, Pencil } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Briefcase, Wallet, Pencil, Plus } from "lucide-react";
 import { Eyebrow, Panel, Pill, Button } from "@/components/ui/kit";
 import { Sparkline } from "@/components/sparkline";
 import { timeAgo } from "@/components/approval-card";
+import { plainPreview } from "@/components/markdown";
+import { ClientEditor } from "@/components/client-editor";
 
 interface KlailyData {
   month: string; revenue: number | null; orders: number | null; note: string;
@@ -20,21 +22,33 @@ interface ClientCard {
   status: string;
   accent: string | null;
   description: string | null;
+  contextNotes: string | null;
   pendingApprovals: number;
   lastMessage: { role: string; snippet: string; createdAt: string } | null;
   sparkline: number[];
 }
+
+const clientStatusTone: Record<string, "up" | "warn" | "down" | "neutral" | "accent"> = {
+  active: "up", unconfigured: "neutral", archived: "neutral",
+};
+
+type EditorState = { mode: "create" } | { mode: "edit"; client: ClientCard };
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<ClientCard[]>([]);
   const [klaily, setKlaily] = useState<KlailyData | null>(null);
   const [revInput, setRevInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/clients").then(r => r.ok ? r.json() : null).then(d => { if (d?.clients) setClients(d.clients); }).catch(() => {});
+  }, []);
 
   useEffect(() => {
-    fetch("/api/clients").then(r => r.ok ? r.json() : null).then(d => { if (d?.clients) setClients(d.clients); }).catch(() => {});
+    load();
     fetch("/api/klaily/revenue").then(r => r.ok ? r.json() : null).then(d => { if (d) setKlaily(d); }).catch(() => {});
-  }, []);
+  }, [load]);
 
   const saveRevenue = async () => {
     const v = Number(revInput);
@@ -58,9 +72,14 @@ export default function ClientsPage() {
 
   return (
     <div className="relative z-10 w-full mx-auto pb-16">
-      <div className="pt-4 pb-8">
-        <div className="eyebrow mb-2.5">Digital Visions</div>
-        <h1 className="text-[32px] font-semibold tracking-[-0.02em] leading-none text-[var(--hq-text)]">Clients</h1>
+      <div className="pt-4 pb-8 flex items-end justify-between">
+        <div>
+          <div className="eyebrow mb-2.5">Digital Visions</div>
+          <h1 className="text-[32px] font-semibold tracking-[-0.02em] leading-none text-[var(--hq-text)]">Clients</h1>
+        </div>
+        <Button variant="primary" onClick={() => setEditor({ mode: "create" })}>
+          <Plus className="w-3.5 h-3.5" /> New client
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -80,10 +99,29 @@ export default function ClientsPage() {
                   </div>
                   <div className="eyebrow !text-[9px] !text-[var(--hq-text-faint)]">{c.type}</div>
                 </div>
-                {c.pendingApprovals > 0 && <Pill tone="warn" className="shrink-0">{c.pendingApprovals} pending</Pill>}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {c.pendingApprovals > 0 && <Pill tone="warn">{c.pendingApprovals} pending</Pill>}
+                  <Pill tone={clientStatusTone[c.status] ?? "neutral"}>{c.status}</Pill>
+                  <button
+                    aria-label={`Edit ${c.name}`}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditor({ mode: "edit", client: c }); }}
+                    className="p-1 rounded text-[var(--text-3)] hover:text-[var(--text)] transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               {c.description && <p className="text-[12.5px] text-[var(--hq-text-2)] leading-relaxed">{c.description}</p>}
+
+              {c.contextNotes && (
+                <div className="mt-2.5 pt-2.5 border-t border-[var(--line)]">
+                  <Eyebrow className="!text-[9px]">Context</Eyebrow>
+                  <p className="mt-1 text-[11.5px] text-[var(--text-3)] leading-relaxed line-clamp-2">
+                    {plainPreview(c.contextNotes, 180)}
+                  </p>
+                </div>
+              )}
 
               <div className="mt-4 pt-3 border-t border-[var(--hq-hairline)]">
                 <Eyebrow className="!text-[9.5px] mb-1.5">activity · 14d</Eyebrow>
@@ -136,6 +174,15 @@ export default function ClientsPage() {
           );
         })}
       </div>
+
+      {editor && (
+        <ClientEditor
+          mode={editor.mode}
+          initial={editor.mode === "edit" ? editor.client : undefined}
+          onSaved={load}
+          onClose={() => setEditor(null)}
+        />
+      )}
     </div>
   );
 }

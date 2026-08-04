@@ -229,3 +229,93 @@ export function Pill({
     </span>
   );
 }
+
+/* ── Modal — centred sheet on desktop, bottom sheet on mobile.
+      Mirrors the pattern already in src/app/agents/page.tsx:154. ── */
+export function Modal({
+  open, onClose, title, children, footer, wide = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  wide?: boolean;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div
+        className={`elevated w-full ${wide ? "max-w-2xl" : "max-w-lg"} max-h-[88vh] flex flex-col overflow-hidden`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 px-5 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--line)" }}>
+          <div className="text-[14px] font-semibold text-[var(--text)]">{title}</div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="ml-auto text-[var(--text-3)] hover:text-[var(--text)] transition-colors text-xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3.5">{children}</div>
+        {footer && (
+          <div className="flex items-center justify-end gap-2 px-5 py-3 shrink-0" style={{ borderTop: "1px solid var(--line)" }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Field — label + control + inline error ── */
+export function Field({
+  label, hint, error, children,
+}: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="eyebrow !text-[9.5px]">{label}</span>
+      <div className="mt-1.5">{children}</div>
+      {error   && <span className="block mt-1 text-[11.5px]" style={{ color: "var(--down)" }}>{error}</span>}
+      {!error && hint && <span className="block mt-1 text-[11px] text-[var(--text-3)]">{hint}</span>}
+    </label>
+  );
+}
+
+const inputCls =
+  "w-full rounded-[10px] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition-colors " +
+  "focus:border-[var(--accent)] disabled:opacity-50";
+const inputStyle: React.CSSProperties = { background: "var(--surface-1)", border: "1px solid var(--line)" };
+
+export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={`${inputCls} ${props.className ?? ""}`} style={{ ...inputStyle, ...props.style }} />;
+}
+
+export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} className={`${inputCls} leading-relaxed resize-y ${props.className ?? ""}`} style={{ ...inputStyle, ...props.style }} />;
+}
+
+export function Select({ options, ...props }: { options: readonly string[] } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select {...props} className={`${inputCls} ${props.className ?? ""}`} style={{ ...inputStyle, ...props.style }}>
+      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+}

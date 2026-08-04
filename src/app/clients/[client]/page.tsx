@@ -5,10 +5,13 @@ import { ArrowLeft, Bot, Cpu, ExternalLink } from "lucide-react";
 import { Panel, Eyebrow, EmptyState, Pill, SectionHeader } from "@/components/ui/kit";
 import { ClientChatThread } from "@/components/client-chat-thread";
 import { ApprovalCard, timeAgo, type Req } from "@/components/approval-card";
+import { Markdown } from "@/components/markdown";
+import { ClientEditor } from "@/components/client-editor";
 
 interface ClientRow {
   slug: string; name: string; type: string; hermesProfile: string | null;
   model: string; status: string; accent: string | null; description: string | null;
+  contextNotes: string | null;
 }
 interface Run {
   id: string; kind: string; title: string; status: string; model: string | null;
@@ -29,6 +32,8 @@ export default function ClientWorkspace({ params }: { params: Promise<{ client: 
   const { client: slug } = use(params);
   const [data, setData] = useState<{ client: ClientRow; approvals: Req[]; runs: Run[]; tasks: Task[] } | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -136,6 +141,33 @@ export default function ClientWorkspace({ params }: { params: Promise<{ client: 
             </Panel>
           </div>
 
+          {/* 4 — Context: standing notes, not a decision; must not outrank approvals */}
+          <div>
+            <SectionHeader
+              label="Context"
+              action={
+                <button onClick={() => setEditing(true)}
+                  className="text-[11.5px] text-[var(--text-3)] hover:text-[var(--text)] transition-colors">
+                  Edit
+                </button>
+              }
+            />
+            <Panel className="p-4">
+              {c?.contextNotes
+                ? <div className={open ? "" : "max-h-44 overflow-hidden relative"}>
+                    <Markdown>{c.contextNotes}</Markdown>
+                  </div>
+                : <div className="text-[12.5px] text-[var(--text-3)] py-4 text-center">
+                    No context yet — add briefs, standing instructions or links.
+                  </div>}
+            </Panel>
+            {c?.contextNotes && c.contextNotes.length > 400 && (
+              <button onClick={() => setOpen(v => !v)} className="mt-1.5 text-[11.5px] text-[var(--text-3)] hover:text-[var(--text)]">
+                {open ? "Show less" : "Show more"}
+              </button>
+            )}
+          </div>
+
           {/* 3 — Tasks: hidden entirely when the board is empty */}
           {(data?.tasks.length ?? 0) > 0 && (
             <div>
@@ -158,6 +190,10 @@ export default function ClientWorkspace({ params }: { params: Promise<{ client: 
           )}
         </div>
       </div>
+
+      {editing && c && (
+        <ClientEditor mode="edit" initial={c} onClose={() => setEditing(false)} onSaved={load} />
+      )}
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  SLUG_RE, CLIENT_STATUSES, CLIENT_TYPES, HEX_RE,
+  normText, badRequest, type Fail,
+} from "@/lib/registry";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const clients = await prisma.client.findMany({
@@ -53,4 +59,44 @@ export async function GET() {
       };
     }),
   });
+}
+
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") return badRequest([{ field: "_", message: "body must be JSON" }]);
+
+  const errors: Fail[] = [];
+  const slug = String(body.slug ?? "").trim().toLowerCase();
+  const name = String(body.name ?? "").trim();
+  if (!SLUG_RE.test(slug)) errors.push({ field: "slug", message: "lowercase letters, digits and hyphens; 2-48 chars" });
+  if (!name) errors.push({ field: "name", message: "required" });
+
+  const type = String(body.type ?? "internal");
+  if (!CLIENT_TYPES.includes(type as never)) errors.push({ field: "type", message: `one of ${CLIENT_TYPES.join(", ")}` });
+
+  const status = String(body.status ?? "unconfigured");
+  if (!CLIENT_STATUSES.includes(status as never)) errors.push({ field: "status", message: `one of ${CLIENT_STATUSES.join(", ")}` });
+
+  const accent = normText(body.accent);
+  if (accent && !HEX_RE.test(accent)) errors.push({ field: "accent", message: "hex colour, e.g. #34d399" });
+
+  if (errors.length) return badRequest(errors);
+
+  try {
+    const client = await prisma.client.create({
+      data: {
+        slug, name, type, status, accent,
+        description:  normText(body.description),
+        contextNotes: normText(body.contextNotes),
+        hermesProfile: normText(body.hermesProfile),
+        ...(normText(body.model) ? { model: normText(body.model)! } : {}),
+      },
+    });
+    return Response.json({ client }, { status: 201 });
+  } catch (e) {
+    // P2002 = unique constraint. slug is the only unique column on Client.
+    if ((e as { code?: string }).code === "P2002")
+      return Response.json({ error: "conflict", errors: [{ field: "slug", message: `'${slug}' already exists` }] }, { status: 409 });
+    throw e;
+  }
 }

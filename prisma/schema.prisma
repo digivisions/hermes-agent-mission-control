@@ -563,8 +563,39 @@ model Client {
   status        String   @default("unconfigured") // 'active' | 'unconfigured' | 'archived'
   accent        String? // hex, for the client index card chip
   description   String? // one-line blurb on the index card
+  contextNotes  String?  @db.Text // free-form markdown: briefs, credentials-locations, links, standing instructions
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([status])
+}
+
+// ─── Project registry (Digital Visions' OWN internal projects) ────────
+// Deliberately NOT related to Client. A Client is a paying external
+// customer; a Project is something we build for ourselves. They share a
+// visual language and nothing else — no FK, no shared table, no join.
+// Superseded the Obsidian-vault filesystem reader that /api/projects used
+// through 74e24a3; prisma/seed-projects.ts carries that content forward.
+
+model Project {
+  id           String   @id @default(cuid())
+  slug         String   @unique // URL-safe id; stable across renames
+  name         String
+  type         String   @default("internal") // 'internal' | 'product' | 'infra' | 'client-site' | 'personal'
+  status       String   @default("planned") // 'active'|'ongoing'|'paused'|'planned'|'blocked'|'complete'|'archived'
+  priority     String   @default("medium") // 'high' | 'medium' | 'low'
+  sortOrder    Int      @default(0) // manual drag order on /projects; ties broken by priority then name
+  tags         String[] @default([]) // Postgres text[]
+  overview     String?  @db.Text
+  nextActions  String[] @default([])
+  waitingOn    String[] @default([])
+  location     String? // canonical path on disk, e.g. '~/1-Development/Micro_Recorder'
+  accent       String? // hex, for the card chip
+  description  String? // one-line blurb (short; `overview` is the long form)
+  contextNotes String?  @db.Text // free-form markdown, same contract as Client.contextNotes
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@index([sortOrder])
 }
