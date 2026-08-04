@@ -452,7 +452,7 @@ model AgentRequest {
   id            String    @id @default(cuid())
   origin        String    @default("web") // "web" | "hermes"
   // "oneshot" | "chat" | "kanban" | "cron.*" | "memory.write"
-  //   | "briefing.generate" | "claude-code"
+  //   | "briefing.generate" | "claude-code" | "digest" | "report"
   kind          String    @default("oneshot")
   title         String
   prompt        String?

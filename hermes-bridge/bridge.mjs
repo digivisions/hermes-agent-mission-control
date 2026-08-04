@@ -27,6 +27,7 @@ import { telegramEnabled, sendMessage, approvalMessage, baseUrl } from "./telegr
 import { ccEnabled, ccProbe, ccRun, formatCcResult, ccTarget } from "./claude-code.mjs";
 import { classify, briefToPrompt } from "./triage.mjs";
 import { collectInfra } from "./infra.mjs";
+import * as assistant from "./assistant.mjs";
 
 /* Load hermes-bridge/.env without a dependency. process.env (PM2 ecosystem)
  * always wins — the file only fills gaps. Secrets live here, NOT in the
@@ -94,6 +95,10 @@ const TRIAGE_TIMEOUT_MS   = Number(process.env.TRIAGE_TIMEOUT_MS || 30000);
 const HERMES_TRIAGE_MODEL = process.env.HERMES_TRIAGE_MODEL || "";
 const HERMES_TRIAGE_PROFILE = process.env.HERMES_TRIAGE_PROFILE || "";
 
+/* ── Phase 4: Krisna, the proactive assistant layer (Spec F) ── */
+const DIGEST_PROFILE = process.env.DIGEST_PROFILE || "admin";
+const ASSISTANT_TELEGRAM_INBOUND = process.env.ASSISTANT_TELEGRAM_INBOUND !== "0";
+
 let ccOnline = false;
 let ccWarned = false;
 let ccOfflineSince = null;
@@ -132,6 +137,23 @@ async function setStore(key, data) {
      ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, "updatedAt" = now()`,
     [key, JSON.stringify(data)]
   );
+}
+
+async function getStore(key) {
+  const { rows } = await q(`SELECT data FROM "DataStore" WHERE key=$1`, [key]);
+  return rows[0]?.data ?? null;
+}
+
+/* ── Phase 4: Krisna config/state (Spec F, F-3 step 3) ── */
+async function readConfig() {
+  return assistant.normalizeConfig(await getStore("assistant-config"));
+}
+async function readState() {
+  return (await getStore("assistant-state")) || {};
+}
+async function writeState(patch) {
+  const cur = await readState();
+  await setStore("assistant-state", { ...cur, ...patch, updatedAt: new Date().toISOString() });
 }
 
 /**
@@ -353,6 +375,17 @@ async function maybeDailyBrief() {
   }
 }
 
+/** One-shot LLM call with --usage-file telemetry. The ONLY place a prompt is
+ *  handed to the CLI — every kind that talks to a model routes through here so
+ *  cost is never invisible (the bug briefing.generate still has). */
+async function runPrompt({ id, profile, prompt, timeout = RUN_TIMEOUT_MS }) {
+  try { fs.mkdirSync(USAGE_DIR, { recursive: true }); } catch { /* docker fallback */ }
+  const usagePath = path.join(USAGE_DIR, `${id}.json`);
+  const args = [...(profile ? ["--profile", profile] : []), "--usage-file", usagePath, "-z", prompt];
+  const out = (await hermes(args, { timeout })).trim();
+  return { out, usage: await readUsage(usagePath) };
+}
+
 /* ─────────────── PUSH: run website requests via Hermes ─────────────── */
 async function runRequest(r) {
   const t0 = Date.now();
@@ -366,15 +399,9 @@ async function runRequest(r) {
       // --usage-file is one-shot only and is written even on failure, so it is
       // the one place token/cost telemetry is available without re-plumbing
       // the bridge onto an OpenAI-compatible endpoint.
-      // Best-effort: in docker-wrapper mode the dir lives inside the
-      // container (already created there) and the host user may not even
-      // be able to traverse its own bind-mount parent — never let that
-      // block the run.
-      try { fs.mkdirSync(USAGE_DIR, { recursive: true }); } catch { /* see readUsage/readUsageViaDocker fallback */ }
-      const usagePath = path.join(USAGE_DIR, `${r.id}.json`);
-      result = (await hermes([...profileArgs, "--usage-file", usagePath, "-z", r.prompt || r.title],
-        { timeout: RUN_TIMEOUT_MS })).trim();
-      usage = await readUsage(usagePath);
+      const rp = await runPrompt({ id: r.id, profile: r.profile, prompt: r.prompt || r.title });
+      result = rp.out;
+      usage = rp.usage;
     } else if (r.kind === "kanban") {
       result = (await hermes([...profileArgs, "kanban", "--board", BOARD, "create", "--json", r.title], { timeout: 20000 })).trim();
     } else if (r.kind.startsWith("cron.")) {
@@ -408,6 +435,38 @@ async function runRequest(r) {
       if (!cc.ok) { ccTelemetry = cc; throw new Error(cc.error || "claude code failed"); }
       ccTelemetry = cc;
       result = formatCcResult(cc);
+    } else if (r.kind === "digest") {
+      const cfg  = await readConfig();
+      const slot = (() => { try { return JSON.parse(r.prompt || "{}").slot || "ondemand"; } catch { return "ondemand"; } })();
+      const ctx  = await assistant.buildContext(q, { slot, windowH: 24, cfg });
+      ctx.decisions = assistant.buildDecisions(ctx, cfg);
+      let text = null, source = "llm";
+      try {
+        const { out, usage: u } = await runPrompt({ id: r.id, profile: DIGEST_PROFILE, prompt: assistant.DIGEST_PROMPT(ctx) });
+        usage = u;                                   // telemetry lands on the row like any other run
+        text  = assistant.formatDigest(out, ctx, slot);
+      } catch (e) { log("digest llm failed:", e.message.split("\n")[0]); }
+      if (!text) { text = assistant.renderFallback(ctx); source = "fallback"; }   // never skip (F-D3)
+      const sent = await sendMessage(text);
+      await setStore("assistant-decisions", { ts: new Date().toISOString(), items: ctx.decisions.slice(0, 12) });
+      await assistant.logDigest(setStore, getStore, {
+        ts: new Date().toISOString(), slot, ok: true, source,
+        requestId: r.id, costUsd: usage?.estimated_cost_usd ?? null,
+        decisions: ctx.decisions.length, sent, text,
+      });
+      result = `${source} · ${ctx.decisions.length} decisions · sent=${sent}`;
+    } else if (r.kind === "report") {
+      const cfg  = await readConfig();
+      const ctx  = await assistant.buildContext(q, { slot: "ondemand", windowH: 24, cfg });
+      ctx.decisions = assistant.buildDecisions(ctx, cfg);
+      try {
+        const { out, usage: u } = await runPrompt({ id: r.id, profile: r.profile, prompt: assistant.REPORT_PROMPT(ctx, r.profile, r.prompt || r.title) });
+        usage = u;
+        result = assistant.formatDigest(out, ctx, "ondemand") || assistant.renderFallback(ctx);
+      } catch (e) {
+        log("report llm failed:", e.message.split("\n")[0]);
+        result = assistant.renderFallback(ctx);
+      }
     } else {
       throw new Error(`unknown kind ${r.kind}`);
     }
@@ -420,7 +479,7 @@ async function runRequest(r) {
         WHERE id=$1`,
       [r.id, capped, u.model, u.tokensIn, u.tokensOut, u.costUsd, u.durationMs]
     );
-    if (r.profile && (r.kind === "oneshot" || r.kind === "chat" || r.kind === "claude-code")) {
+    if (r.profile && ["oneshot", "chat", "claude-code", "report"].includes(r.kind)) {
       await q(
         `INSERT INTO "ChatMessage" (id, client, role, content, "requestId", "createdAt")
          VALUES ($1,$2,'assistant',$3,$4, now())`,
@@ -789,6 +848,32 @@ async function writeTriageStats() {
   await setStore("triage-stats", { ...triageStats, updatedAt: new Date().toISOString() });
 }
 
+/**
+ * Krisna scheduler (Spec F, F-4). Enqueues a `digest` AgentRequest when a
+ * slot is due — the LLM call itself runs through the normal queue tick, not
+ * here, so it rides claimBatch()'s SKIP LOCKED and sweepStale()'s timeout.
+ *
+ * Stamp-before-enqueue, deliberately: if the enqueue fails, we lose one
+ * digest; if we stamped after and the process died between, we'd enqueue on
+ * every 30s tick until it succeeded. A missed digest is recoverable (the
+ * next slot, or the dashboard button); a Telegram flood at 30s intervals is
+ * not.
+ */
+async function assistantTick() {
+  const cfg = await readConfig();
+  if (!cfg.enabled) return;
+  const state = await readState();
+  const due = assistant.slotDue(cfg, state, Date.now());
+  if (!due) return;
+  await writeState({ lastDigest: { ...state.lastDigest, [due.slot]: due.ictDate } });  // stamp FIRST
+  if (due.late) { log(`assistant: skipping late ${due.slot} digest for ${due.ictDate}`); return; }
+  await q(`INSERT INTO "AgentRequest"(id,origin,kind,title,prompt,status,"createdAt","updatedAt")
+           VALUES ($1,'hermes','digest',$2,$3,'queued',now(),now())`,
+          [randomUUID(), `Krisna · tóm tắt ${due.slot === "morning" ? "sáng" : "tối"}`,
+           JSON.stringify({ slot: due.slot })]);
+  await emit("status", `Krisna: ${due.slot} digest queued`, { level: "info" });
+}
+
 /* ─────────────── loops ─────────────── */
 async function mirrorTick() {
   try { await sweepStale();     } catch (e) { log("sweepStale err", e.message); }
@@ -800,6 +885,7 @@ async function mirrorTick() {
   try { await mirrorCost();     } catch (e) { log("mirrorCost err", e.message); }
   try { await maybeDailyBrief();} catch (e) { log("maybeDailyBrief err", e.message); }
   try { await heartbeat();      } catch (e) { log("heartbeat err", e.message); }
+  try { await assistantTick(); } catch (e) { log("assistantTick err", e.message); }
   try { await writeTriageStats();} catch (e) { log("triageStats err", e.message); }
   await collectInfra().then((d) => setStore("infra-health", d)).catch((e) => log("infra err", e.message));
 }
