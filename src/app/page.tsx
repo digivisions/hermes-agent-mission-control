@@ -2,21 +2,12 @@
 
 import { useEffect, useState } from "react";
 import {
-  Briefcase, Activity, HardDrive, Wallet, GripVertical,
-  CircleCheck, CircleDashed, CircleAlert, FolderKanban, LayoutGrid,
+  Briefcase, Activity, HardDrive,
+  CircleCheck, CircleDashed, CircleAlert, LayoutGrid,
 } from "lucide-react";
-import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext, useSortable, arrayMove, rectSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { HermesBriefing } from "@/components/hermes-briefing";
-import { ApprovalInbox } from "@/components/approval-inbox";
-import { ClientChat } from "@/components/client-chat";
-import { Eyebrow, Panel, Pill, SectionHeader } from "@/components/ui/kit";
+import { Eyebrow, Panel, Pill, SectionHeader, EmptyState } from "@/components/ui/kit";
 
 // ── Types ─────────────────────────────────────────────────
 interface Project {
@@ -25,21 +16,13 @@ interface Project {
 }
 interface InfraService { name: string; up: boolean }
 interface InfraData { services: InfraService[]; allUp: boolean; mounts: { label: string; mounted: boolean }[]; macConnected: boolean; vaultSyncedAt: string | null; generatedAt: string }
-interface KlailyData { month: string; revenue: number | null; orders: number | null; note: string; source: string; palmstreetYearly: string | null; vaultUpdated: string | null }
-interface TaskCounts { [status: string]: number }
-interface TaskData { tasks: { title: string; status: string; priority: number | null }[]; counts: TaskCounts; total: number; lastSync: string | null }
 
-// ── Panel registry — draggable dashboard cards ────────────
-const PANELS = [
-  { id: "projects", label: "Active Projects" },
-  { id: "klaily", label: "Klaily Revenue" },
-  { id: "echo", label: "Echo Status" },
-  { id: "tasks", label: "Task Board" },
-  { id: "infra", label: "Infrastructure" },
-  { id: "activity", label: "Recent Activity" },
-] as const;
-type PanelId = (typeof PANELS)[number]["id"];
-const ORDER_KEY = "hermy-dashboard-order-v1";
+interface Cockpit {
+  tiles: { pendingApprovals: number; activeRuns: number; infraAlerts: number;
+           openTasks: number; spendMonthUsd: number; failed24h: number };
+  bridge: { stale: boolean; lastSeen: string | null };
+  throughput: { day: string; label: string; done: number; failed: number; rejected: number }[];
+}
 
 // ── Helpers ───────────────────────────────────────────────
 function greeting() {
@@ -75,36 +58,6 @@ const StatusIcon = ({ s }: { s: string }) =>
 
 const rise = (i: number) => ({ animationDelay: `${i * 60}ms` });
 
-// ── Draggable wrapper ─────────────────────────────────────
-function SortablePanel({ id, index, children, className = "" }: {
-  id: string; index: number; children: React.ReactNode; className?: string;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 30 : undefined }}
-      className={`hq-rise ${isDragging ? "opacity-90 relative" : ""}`}
-    >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing h-full"
-        title="Drag to reorder"
-      >
-        <Panel className={`h-full flex flex-col p-7 ${className}`}>
-          {/* drag handle */}
-          <div className="flex items-center justify-between -mt-1 mb-4 select-none">
-            <Eyebrow>{PANELS[index]?.label}</Eyebrow>
-            <GripVertical className="w-4 h-4 text-[var(--hq-text-ghost)] opacity-50 group-hover:opacity-100" />
-          </div>
-          <div className="flex-1 flex flex-col min-h-0">{children}</div>
-        </Panel>
-      </div>
-    </div>
-  );
-}
-
 // ── Panels ────────────────────────────────────────────────
 function ProjectsPanel({ projects }: { projects: Project[] }) {
   const active = projects.filter(p => p.status === "active" || p.status === "ongoing");
@@ -128,101 +81,6 @@ function ProjectsPanel({ projects }: { projects: Project[] }) {
         ))}
         {projects.length === 0 && <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-10 text-center">No projects synced yet</div>}
       </div>
-    </>
-  );
-}
-
-function KlailyPanel({ k }: { k: KlailyData }) {
-  const rev = k.revenue;
-  return (
-    <>
-      <div className="flex items-end gap-2.5 mb-2">
-        <span className="num font-semibold text-[36px] leading-none tracking-[-0.02em] text-[var(--hq-text)]">
-          {rev === null ? "—" : `$${rev.toLocaleString("en-US")}`}
-        </span>
-        {k.orders !== null && <span className="num text-[12px] text-[var(--hq-text-ghost)] mb-1">{k.orders} orders</span>}
-      </div>
-      <div className="eyebrow !text-[9.5px] mb-5">{k.month} · Shopify</div>
-      <div className="space-y-3 pt-4 border-t border-[var(--hq-hairline)] mt-auto">
-        {k.palmstreetYearly && (
-          <div className="flex items-center gap-2 text-[12px] text-[var(--hq-text-2)]">
-            <Wallet className="w-3.5 h-3.5 text-[var(--hq-accent)]" />
-            <span>Palmstreet ~${k.palmstreetYearly}/yr</span>
-          </div>
-        )}
-        {k.note && <div className="text-[12px] text-[var(--hq-text-2)]">{k.note}</div>}
-        {k.source === "manual" && rev === null && (
-          <div className="text-[12px] text-[var(--hq-warn)] flex items-center gap-1.5">
-            <CircleDashed className="w-3.5 h-3.5" /> No revenue entered — edit on the Klaily page
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function EchoPanel({ project }: { project?: Project }) {
-  return (
-    <>
-      <div className="flex items-center gap-2 mb-1">
-        <Pill tone={project ? statusTone[project.status] || "neutral" : "neutral"}>{project?.status || "—"}</Pill>
-      </div>
-      <div className="text-[13.5px] font-semibold text-[var(--hq-text)] mb-2">Micro-Recorder (ESP32-S3)</div>
-      {project ? (
-        <>
-          <p className="text-[12.5px] text-[var(--hq-text-2)] leading-relaxed line-clamp-3 mb-4">
-            {project.overview?.split(". ").slice(0, 2).join(". ") || "No overview in vault note."}
-          </p>
-          {project.nextActions.length > 0 && (
-            <div className="mt-auto pt-4 border-t border-[var(--hq-hairline)]">
-              <div className="eyebrow !text-[9.5px] mb-3">Next</div>
-              <div className="space-y-2.5">
-                {project.nextActions.slice(0, 2).map((a, i) => (
-                  <div key={i} className="text-[11.5px] text-[var(--hq-text-2)] leading-relaxed flex gap-2.5">
-                    <span className="num text-[var(--hq-accent)] shrink-0">{i + 1}.</span>
-                    <span>{a}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-4">Echo note not found in vault mirror</div>
-      )}
-    </>
-  );
-}
-
-function TasksPanel({ data }: { data: TaskData | null }) {
-  const total = data?.total ?? 0;
-  const counts = data?.counts ?? {};
-  const statusOrder: { key: string; label: string; tone: "up" | "accent" | "warn" | "neutral" }[] = [
-    { key: "todo", label: "Todo", tone: "neutral" },
-    { key: "ready", label: "Ready", tone: "accent" },
-    { key: "running", label: "Running", tone: "warn" },
-    { key: "done", label: "Done", tone: "up" },
-  ];
-  return (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <Pill tone={total > 0 ? "accent" : "neutral"}>{total} tasks</Pill>
-      </div>
-      {total > 0 ? (
-        <div className="grid grid-cols-4 gap-2.5">
-          {statusOrder.map(s => (
-            <div key={s.key} className="rounded-xl border border-[var(--hq-hairline)] bg-[var(--hq-elev-1)] px-2 py-3.5 text-center">
-              <div className="num font-semibold text-[22px] text-[var(--hq-text)]">{counts[s.key] || 0}</div>
-              <div className="eyebrow !text-[9px] mt-1.5" style={{ color: `var(--hq-${s.tone})` }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-8 text-center">
-          No kanban tasks yet — the bridge syncs them from Hermes.
-        </div>
-      )}
-      {data?.lastSync && <div className="num text-[10px] text-[var(--hq-text-faint)] mt-4">synced {timeAgo(data.lastSync)}</div>}
     </>
   );
 }
@@ -283,26 +141,96 @@ function ActivityPanel() {
   );
 }
 
+/**
+ * Row 1. Five numbers that answer "do I need to act?". Every tile links
+ * somewhere — a tile you can't act on doesn't belong on a cockpit.
+ *
+ * NB: var(--hq-accent) does not exist; accent is var(--accent).
+ */
+function StatusStrip({ c }: { c: Cockpit | null }) {
+  const t = c?.tiles;
+  const tiles = [
+    { label: "Pending approvals", value: t?.pendingApprovals ?? 0, href: "/hermes",
+      color: (t?.pendingApprovals ?? 0) > 0 ? "var(--hq-warn)" : "var(--hq-text)" },
+    { label: "Active agent runs", value: t?.activeRuns ?? 0, href: "/agents",
+      color: (t?.activeRuns ?? 0) > 0 ? "var(--accent)" : "var(--hq-text)" },
+    { label: "Infra alerts", value: t?.infraAlerts ?? 0, href: "/infrastructure",
+      color: (t?.infraAlerts ?? 0) > 0 ? "var(--hq-down)" : "var(--hq-up)" },
+    { label: "Open tasks", value: t?.openTasks ?? 0, href: "/tasks",
+      color: "var(--hq-text)" },
+    { label: "AI spend · month", value: t?.spendMonthUsd ?? 0, href: "/agents",
+      color: "var(--hq-text)", money: true },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+      {tiles.map((tile, i) => (
+        <Panel key={tile.label} href={tile.href} className="p-5 hq-rise" style={rise(i)}>
+          <Eyebrow>{tile.label}</Eyebrow>
+          <div className="num font-semibold text-[30px] leading-none mt-2.5 tracking-[-0.02em]" style={{ color: tile.color }}>
+            {tile.money
+              ? `$${tile.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+              : tile.value}
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Row 2. Stacked by outcome, 14 days. This is the "is the machine working"
+ * chart — a failure-rate spike here is the earliest signal of a broken profile
+ * or a wedged bridge.
+ */
+function ThroughputChart({ data }: { data: Cockpit["throughput"] }) {
+  const empty = data.every((d) => d.done + d.failed + d.rejected === 0);
+  return (
+    <Panel className="p-6 mb-6 hq-rise" style={rise(5)}>
+      <SectionHeader label="Throughput" title="Agent tasks · last 14 days" />
+      {empty ? (
+        <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-14 text-center">
+          No agent runs in the last 14 days.
+        </div>
+      ) : (
+        <div style={{ width: "100%", height: 220 }}>
+          <ResponsiveContainer>
+            <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--hq-hairline)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--hq-text-ghost)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 10, fill: "var(--hq-text-ghost)" }} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "var(--hq-elev-1)", border: "1px solid var(--hq-hairline)", borderRadius: 10, fontSize: 12 }} />
+              <Area type="monotone" dataKey="done"     stackId="1" stroke="var(--hq-up)"         fill="var(--hq-up)"         fillOpacity={0.22} name="Completed" />
+              <Area type="monotone" dataKey="failed"   stackId="1" stroke="var(--hq-down)"       fill="var(--hq-down)"       fillOpacity={0.22} name="Failed" />
+              <Area type="monotone" dataKey="rejected" stackId="1" stroke="var(--hq-text-ghost)" fill="var(--hq-text-ghost)" fillOpacity={0.18} name="Rejected" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/** Row 3 right. Phase 4 fills this; the empty state is the honest v1. */
+function DecisionItems() {
+  return (
+    <Panel className="p-6 h-full">
+      <SectionHeader label="Decisions" title="Needs your call" />
+      <EmptyState title="No decisions queued."
+        hint="Hermes will surface things needing your judgement here (Phase 4)." />
+    </Panel>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────
 export default function Dashboard() {
   const [time, setTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [infra, setInfra] = useState<InfraData | null>(null);
-  const [klaily, setKlaily] = useState<KlailyData | null>(null);
-  const [tasks, setTasks] = useState<TaskData | null>(null);
-  const [order, setOrder] = useState<PanelId[]>(PANELS.map(p => p.id));
+  const [cockpit, setCockpit] = useState<Cockpit | null>(null);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-
-  // load saved panel order
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(ORDER_KEY) || "null");
-      if (Array.isArray(saved) && saved.length === PANELS.length) setOrder(saved);
-    } catch { /* ignore */ }
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
@@ -313,112 +241,72 @@ export default function Dashboard() {
     const load = () => {
       fetch("/api/projects").then(r => r.ok ? r.json() : null).then(d => { if (d?.projects) setProjects(d.projects); }).catch(() => {});
       fetch("/api/infra").then(r => r.ok ? r.json() : null).then(d => { if (d) setInfra(d); }).catch(() => {});
-      fetch("/api/klaily/revenue").then(r => r.ok ? r.json() : null).then(d => { if (d) setKlaily(d); }).catch(() => {});
-      fetch("/api/hermes/tasks").then(r => r.ok ? r.json() : null).then(d => { if (d) setTasks(d); }).catch(() => {});
+      fetch("/api/hermes/cockpit").then(r => r.ok ? r.json() : null).then(d => { if (d) setCockpit(d); }).catch(() => {});
     };
     load();
-    const iv = setInterval(load, 60_000);
+    const iv = setInterval(load, 30_000);
     return () => clearInterval(iv);
   }, []);
 
-  const onDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    setOrder(prev => {
-      const oldIndex = prev.indexOf(active.id as PanelId);
-      const newIndex = prev.indexOf(over.id as PanelId);
-      const next = arrayMove(prev, oldIndex, newIndex);
-      try { localStorage.setItem(ORDER_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  };
-
   if (!mounted) return null;
 
-  const echo = projects.find(p => p.slug.includes("Echo") || p.slug.includes("Micro"));
   const activeCount = projects.filter(p => p.status === "active" || p.status === "ongoing").length;
-  const openTasks = tasks ? (tasks.counts.todo || 0) + (tasks.counts.ready || 0) + (tasks.counts.running || 0) : 0;
-
-  const panelContent: Record<PanelId, React.ReactNode> = {
-    projects: <ProjectsPanel projects={projects} />,
-    klaily: <KlailyPanel k={klaily || { month: new Date().toISOString().slice(0, 7), revenue: null, orders: null, note: "", source: "manual", palmstreetYearly: null, vaultUpdated: null }} />,
-    echo: <EchoPanel project={echo} />,
-    tasks: <TasksPanel data={tasks} />,
-    infra: <InfraPanel infra={infra} />,
-    activity: <ActivityPanel />,
-  };
+  const openTasks = cockpit?.tiles.openTasks ?? 0;
 
   return (
-    <>
-      <div className="relative z-10 w-full mx-auto pb-20">
-        {/* ── Header ─────────────────────────────────────── */}
-        <div className="hq-rise pt-4 pb-10 flex flex-wrap items-end justify-between gap-6" style={rise(0)}>
-          <div>
-            <div className="eyebrow mb-3">{greeting()},</div>
-            <h1 className="text-[42px] font-semibold tracking-[-0.025em] leading-none text-[var(--hq-text)]" style={{ fontFamily: "var(--font-display)" }}>
-              {process.env.NEXT_PUBLIC_OWNER_NAME || "Andy"}
-            </h1>
-            <p className="num text-[var(--hq-text-ghost)] text-[13px] mt-3.5">
-              {time.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-              {"  ·  "}
-              {time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
-            </p>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-white px-3 py-1.5 text-[11px] font-medium"
-              style={{ color: "var(--hq-up)", borderColor: "color-mix(in srgb, var(--hq-up) 30%, transparent)" }}>
-              <span className="relative flex w-1.5 h-1.5">
-                <span className="absolute inline-flex h-full w-full rounded-full animate-ping" style={{ background: "var(--hq-up)" }} />
-                <span className="relative inline-flex w-1.5 h-1.5 rounded-full" style={{ background: "var(--hq-up)" }} />
-              </span>
-              <span className="eyebrow !text-[9.5px] !text-[var(--hq-text-faint)]">Live</span>
-            </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-white px-3 py-1.5">
-              <Briefcase className="w-3 h-3 text-[var(--hq-accent)]" />
-              <span className="num text-[11.5px] text-[var(--hq-text-2)]">{activeCount} active</span>
-            </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-white px-3 py-1.5">
-              <LayoutGrid className="w-3 h-3 text-[var(--hq-accent)]" />
-              <span className="num text-[11.5px] text-[var(--hq-text-2)]">{openTasks} open tasks</span>
-            </div>
-          </div>
+    <div className="relative z-10 w-full mx-auto pb-20">
+      {/* ── Header ─────────────────────────────────────── */}
+      <div className="hq-rise pt-4 pb-10 flex flex-wrap items-end justify-between gap-6" style={rise(0)}>
+        <div>
+          <div className="eyebrow mb-3">{greeting()},</div>
+          <h1 className="text-[42px] font-semibold tracking-[-0.025em] leading-none text-[var(--hq-text)]" style={{ fontFamily: "var(--font-display)" }}>
+            {process.env.NEXT_PUBLIC_OWNER_NAME || "Andy"}
+          </h1>
+          <p className="num text-[var(--hq-text-ghost)] text-[13px] mt-3.5">
+            {time.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            {"  ·  "}
+            {time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+          </p>
         </div>
-
-        {/* ── Brief + approvals ─────────────────────────── */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start mb-6">
-          <div className="xl:col-span-2 hq-rise" style={rise(1)}>
-            <HermesBriefing />
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-white px-3 py-1.5 text-[11px] font-medium"
+            style={{ color: "var(--hq-up)", borderColor: "color-mix(in srgb, var(--hq-up) 30%, transparent)" }}>
+            <span className="relative flex w-1.5 h-1.5">
+              <span className="absolute inline-flex h-full w-full rounded-full animate-ping" style={{ background: "var(--hq-up)" }} />
+              <span className="relative inline-flex w-1.5 h-1.5 rounded-full" style={{ background: "var(--hq-up)" }} />
+            </span>
+            <span className="eyebrow !text-[9.5px] !text-[var(--hq-text-faint)]">Live</span>
           </div>
-          <div className="xl:col-span-1 hq-rise" style={rise(2)}>
-            <ApprovalInbox compact />
+          <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-white px-3 py-1.5">
+            <Briefcase className="w-3 h-3 text-[var(--hq-accent)]" />
+            <span className="num text-[11.5px] text-[var(--hq-text-2)]">{activeCount} active</span>
           </div>
-        </div>
-
-        {/* ── Client Chat ──────────────────────────────────── */}
-        <div className="mb-6 hq-rise" style={rise(3)}>
-          <Panel className="p-6">
-            <SectionHeader label="Signal" title="Client Chat" />
-            <ClientChat />
-          </Panel>
-        </div>
-
-        {/* ── Draggable panel grid ──────────────────────── */}
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={order} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-7 items-stretch">
-              {order.map((id, i) => (
-                <SortablePanel key={id} id={id} index={i}>
-                  {panelContent[id]}
-                </SortablePanel>
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-
-        <div className="mt-6 text-center">
-          <span className="num text-[10.5px] text-[var(--hq-text-faint)]">Drag any card to reorder — layout is saved in your browser</span>
+          <div className="flex items-center gap-1.5 rounded-full border border-[var(--hq-hairline)] bg-white px-3 py-1.5">
+            <LayoutGrid className="w-3 h-3 text-[var(--hq-accent)]" />
+            <span className="num text-[11.5px] text-[var(--hq-text-2)]">{openTasks} open tasks</span>
+          </div>
         </div>
       </div>
-    </>
+
+      <StatusStrip c={cockpit} />
+      <ThroughputChart data={cockpit?.throughput ?? []} />
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-stretch mb-6">
+        <div className="xl:col-span-2 hq-rise" style={rise(6)}><HermesBriefing /></div>
+        <div className="xl:col-span-1 hq-rise" style={rise(7)}><DecisionItems /></div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-stretch">
+        <Panel className="p-7 hq-rise flex flex-col" style={rise(8)}>
+          <Eyebrow>Active Projects</Eyebrow><div className="mt-4 flex-1"><ProjectsPanel projects={projects} /></div>
+        </Panel>
+        <Panel className="p-7 hq-rise flex flex-col" style={rise(9)}>
+          <Eyebrow>Infrastructure</Eyebrow><div className="mt-4 flex-1"><InfraPanel infra={infra} /></div>
+        </Panel>
+        <Panel className="p-7 hq-rise flex flex-col" style={rise(10)}>
+          <Eyebrow>Recent Activity</Eyebrow><div className="mt-4 flex-1"><ActivityPanel /></div>
+        </Panel>
+      </div>
+    </div>
   );
 }

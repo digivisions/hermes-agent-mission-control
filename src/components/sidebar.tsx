@@ -4,8 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import {
-  Home, Bot, Lightbulb, BookOpen, Briefcase, HeartPulse, Server,
-  Menu, X, LayoutGrid, FolderKanban,
+  Home, Bot, Briefcase, Server, Menu, X, LayoutGrid, FolderKanban, Layers,
 } from "lucide-react";
 
 const navGroups = [
@@ -13,34 +12,24 @@ const navGroups = [
     name: "Overview",
     items: [
       { href: "/", label: "Dashboard", icon: Home },
-      { href: "/tasks", label: "Tasks", icon: LayoutGrid },
-      { href: "/hermes", label: "Hermes", icon: Bot },
     ],
   },
   {
     name: "Work",
     items: [
+      { href: "/clients",  label: "Clients",  icon: Briefcase },
       { href: "/projects", label: "Projects", icon: FolderKanban },
-      { href: "/clients", label: "Clients", icon: Briefcase },
+      { href: "/tasks",    label: "Tasks",    icon: LayoutGrid },
     ],
   },
   {
     name: "System",
     items: [
+      { href: "/agents",         label: "Agents",         icon: Bot },
       { href: "/infrastructure", label: "Infrastructure", icon: Server },
-      { href: "/memory-wiki", label: "Memory Wiki", icon: BookOpen },
-      { href: "/ideas", label: "Ideas", icon: Lightbulb },
+      { href: "/content-os",     label: "Content OS",     icon: Layers },
     ],
   },
-];
-
-// Mobile tab bar - only show the 5 most important
-const mobileTabsRaw = [
-  { href: "/", label: "Dashboard", icon: Home },
-  { href: "/tasks", label: "Tasks", icon: LayoutGrid },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/hermes", label: "Hermes", icon: Bot },
-  { href: "/memory-wiki", label: "Wiki", icon: BookOpen },
 ];
 
 export function Sidebar() {

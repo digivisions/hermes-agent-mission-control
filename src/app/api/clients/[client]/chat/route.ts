@@ -18,16 +18,21 @@ export async function GET(
   const requests = requestIds.length
     ? await prisma.agentRequest.findMany({
         where: { id: { in: requestIds } },
-        select: { id: true, status: true },
+        select: { id: true, status: true, startedAt: true, error: true },
       })
     : [];
-  const statusById = new Map(requests.map((r) => [r.id, r.status]));
+  const byId = new Map(requests.map((r) => [r.id, r]));
 
   return NextResponse.json({
-    messages: messages.map((m) => ({
-      ...m,
-      requestStatus: m.requestId ? statusById.get(m.requestId) ?? null : null,
-    })),
+    messages: messages.map((m) => {
+      const req = m.requestId ? byId.get(m.requestId) : undefined;
+      return {
+        ...m,
+        requestStatus:    req?.status    ?? null,
+        requestStartedAt: req?.startedAt ?? null,
+        requestError:     req?.error     ?? null,
+      };
+    }),
   });
 }
 

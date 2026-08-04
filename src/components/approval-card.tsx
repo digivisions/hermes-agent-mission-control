@@ -1,23 +1,11 @@
 "use client";
 
-/* ───────────────────────────────────────────────────────────
-   DigivisionsHQ · Approval inbox
-   "Everything that needs your tap" queue.
-   Self-contained: polls /api/hermes/requests, one-tap
-   approve / reject / edit via PATCH. Calm Luxury.
-   ─────────────────────────────────────────────────────────── */
-
-import { useCallback, useEffect, useState } from "react";
-import { Check, X, Pencil, Inbox } from "lucide-react";
-import {
-  Panel,
-  Pill,
-  EmptyState,
-  Eyebrow,
-} from "@/components/ui/kit";
+import { useState } from "react";
+import { Check, X, Pencil } from "lucide-react";
+import { Panel, Pill } from "@/components/ui/kit";
 
 // ── Types ─────────────────────────────────────────────────
-interface Req {
+export interface Req {
   id: string;
   origin: string;
   kind: string;
@@ -31,7 +19,7 @@ interface Req {
 }
 
 // ── Helpers ───────────────────────────────────────────────
-function timeAgo(d: string | null): string {
+export function timeAgo(d: string | null): string {
   if (!d) return "—";
   const diff = Date.now() - new Date(d).getTime();
   if (Number.isNaN(diff)) return "—";
@@ -45,18 +33,8 @@ function timeAgo(d: string | null): string {
   return `${days}d ago`;
 }
 
-async function getJSON<T>(url: string): Promise<T | null> {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    return (await r.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
 // ── Card ──────────────────────────────────────────────────
-function InboxCard({
+export function ApprovalCard({
   req,
   compact,
   onAction,
@@ -199,92 +177,5 @@ function InboxCard({
         )}
       </div>
     </Panel>
-  );
-}
-
-// ── Main ──────────────────────────────────────────────────
-export function ApprovalInbox({ compact = false }: { compact?: boolean }) {
-  const [requests, setRequests] = useState<Req[]>([]);
-  const [pending, setPending] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-
-  const load = useCallback(async () => {
-    const data = await getJSON<{ requests: Req[]; pending: number }>(
-      "/api/hermes/requests?status=awaiting_approval&take=50"
-    );
-    if (data) {
-      setRequests(data.requests ?? []);
-      setPending(data.pending ?? data.requests?.length ?? 0);
-    }
-    setLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    load();
-    const iv = setInterval(load, 6000);
-    return () => clearInterval(iv);
-  }, [load]);
-
-  // optimistic removal, then refetch to reconcile
-  const handleAction = useCallback(
-    (id: string) => {
-      setRequests((prev) => prev.filter((r) => r.id !== id));
-      setPending((p) => Math.max(0, p - 1));
-      load();
-    },
-    [load]
-  );
-
-  const count = pending || requests.length;
-  const visible = compact ? requests.slice(0, 3) : requests;
-
-  return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <Eyebrow>Approval inbox</Eyebrow>
-        <Pill tone={count > 0 ? "accent" : "neutral"}>
-          {count} pending
-        </Pill>
-      </div>
-
-      {loaded && requests.length === 0 ? (
-        <Panel className="p-2">
-          <EmptyState
-            icon={<Check className="w-6 h-6" style={{ color: "var(--up)" }} />}
-            title="Nothing needs you right now — you're clear."
-            hint="Side-effecting work waiting on your call will land here."
-          />
-        </Panel>
-      ) : requests.length === 0 ? (
-        // pre-load: keep it calm, mirror empty framing
-        <Panel className="p-2">
-          <EmptyState
-            icon={<Inbox className="w-6 h-6" />}
-            title="Checking the queue…"
-          />
-        </Panel>
-      ) : (
-        <div className={`flex flex-col ${compact ? "gap-2.5" : "gap-4"}`}>
-          {visible.map((req) => (
-            <InboxCard
-              key={req.id}
-              req={req}
-              compact={compact}
-              onAction={() => handleAction(req.id)}
-            />
-          ))}
-          {compact && count > 3 && (
-            <a
-              href="/hermes"
-              className="inline-flex items-center gap-1 self-start text-[12.5px] font-medium transition-colors"
-              style={{ color: "var(--accent)" }}
-            >
-              View all in Hermes →
-            </a>
-          )}
-        </div>
-      )}
-    </div>
   );
 }

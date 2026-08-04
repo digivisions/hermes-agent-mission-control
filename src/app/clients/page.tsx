@@ -3,27 +3,36 @@
 import { useEffect, useState } from "react";
 import { Briefcase, Wallet, Pencil } from "lucide-react";
 import { Eyebrow, Panel, Pill, Button } from "@/components/ui/kit";
+import { Sparkline } from "@/components/sparkline";
+import { timeAgo } from "@/components/approval-card";
 
 interface KlailyData {
   month: string; revenue: number | null; orders: number | null; note: string;
   source: string; palmstreetYearly: string | null; vaultUpdated: string | null;
 }
 
-const clients = [
-  { name: "Klaily", type: "E-commerce · Shopify", desc: "Botanical earrings store + custom OS 2.0 theme, family business with sister on Palmstreet.", accent: "#34d399" },
-  { name: "SOONGS", type: "Shopify · Custom Theme", desc: "Local brand — custom theme and Shopify coding (15M VND engagement).", accent: "#fbbf24" },
-  { name: "CHUBB Dev", type: "Day job · Insurance", desc: "Day-to-day engineering work at CHUBB.", accent: "#60a5fa" },
-  { name: "MoveVN", type: "Platform · Training", desc: "MOVE platform — content, blog, site maintenance.", accent: "#f472b6" },
-  { name: "Immersive Travel Asia", type: "Travel · Content", desc: "Travel itinerary content and publishing.", accent: "#a78bfa" },
-  { name: "Anh Ngu An Toan", type: "EdTech · English", desc: "Safety English learning platform.", accent: "#f87171" },
-];
+interface ClientCard {
+  slug: string;
+  name: string;
+  type: string;
+  hermesProfile: string | null;
+  model: string;
+  status: string;
+  accent: string | null;
+  description: string | null;
+  pendingApprovals: number;
+  lastMessage: { role: string; snippet: string; createdAt: string } | null;
+  sparkline: number[];
+}
 
 export default function ClientsPage() {
+  const [clients, setClients] = useState<ClientCard[]>([]);
   const [klaily, setKlaily] = useState<KlailyData | null>(null);
   const [revInput, setRevInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    fetch("/api/clients").then(r => r.ok ? r.json() : null).then(d => { if (d?.clients) setClients(d.clients); }).catch(() => {});
     fetch("/api/klaily/revenue").then(r => r.ok ? r.json() : null).then(d => { if (d) setKlaily(d); }).catch(() => {});
   }, []);
 
@@ -55,51 +64,77 @@ export default function ClientsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {clients.map((c, i) => (
-          <Panel key={c.name} className="h-full flex flex-col p-6">
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center" style={{ background: "color-mix(in srgb, " + c.accent + " 15%, transparent)", color: c.accent }}>
-                <Briefcase className="w-4 h-4" />
+        {clients.map((c) => {
+          const live = c.status === "active" && !!c.hermesProfile;
+          const accent = c.accent ?? "#94a3b8";
+          return (
+            <Panel key={c.slug} href={`/clients/${c.slug}`} interactive className="h-full flex flex-col p-6">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center shrink-0" style={{ background: "color-mix(in srgb, " + accent + " 15%, transparent)", color: accent }}>
+                  <Briefcase className="w-4 h-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: live ? "var(--hq-up)" : "var(--hq-warn)" }} />
+                    <h3 className="text-[15px] font-semibold text-[var(--hq-text)] truncate">{c.name}</h3>
+                  </div>
+                  <div className="eyebrow !text-[9px] !text-[var(--hq-text-faint)]">{c.type}</div>
+                </div>
+                {c.pendingApprovals > 0 && <Pill tone="warn" className="shrink-0">{c.pendingApprovals} pending</Pill>}
               </div>
-              <div>
-                <h3 className="text-[15px] font-semibold text-[var(--hq-text)]">{c.name}</h3>
-                <div className="eyebrow !text-[9px] !text-[var(--hq-text-faint)]">{c.type}</div>
-              </div>
-            </div>
-            <p className="text-[12.5px] text-[var(--hq-text-2)] leading-relaxed">{c.desc}</p>
-            {c.name === "Klaily" && (
+
+              {c.description && <p className="text-[12.5px] text-[var(--hq-text-2)] leading-relaxed">{c.description}</p>}
+
               <div className="mt-4 pt-3 border-t border-[var(--hq-hairline)]">
-                <div className="flex items-center justify-between mb-2">
-                  <Eyebrow className="!text-[9.5px]">This month · {klaily?.month || "—"}</Eyebrow>
-                  <Wallet className="w-3.5 h-3.5 text-[var(--hq-text-ghost)]" />
-                </div>
-                <div className="flex items-end gap-2">
-                  <span className="num font-semibold text-[26px] leading-none text-[var(--hq-text)]">
-                    {klaily?.revenue === null || klaily?.revenue === undefined ? "—" : `$${klaily.revenue.toLocaleString("en-US")}`}
-                  </span>
-                  {klaily?.orders !== null && klaily?.orders !== undefined && (
-                    <span className="num text-[11.5px] text-[var(--hq-text-ghost)] mb-0.5">{klaily.orders} orders</span>
-                  )}
-                </div>
-                {klaily?.palmstreetYearly && (
-                  <div className="num text-[10.5px] text-[var(--hq-text-faint)] mt-1.5">Palmstreet ~${klaily.palmstreetYearly}/yr (vault)</div>
-                )}
-                <div className="flex gap-2 mt-3">
-                  <input
-                    value={revInput}
-                    onChange={e => setRevInput(e.target.value)}
-                    placeholder="Monthly revenue $"
-                    className="flex-1 min-w-0 rounded-lg border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-3 py-1.5 text-[12.5px] text-[var(--hq-text)] outline-none focus:border-[var(--hq-accent)]"
-                  />
-                  <Button onClick={saveRevenue} disabled={saving} size="sm">
-                    <Pencil className="w-3.5 h-3.5" /> {saving ? "Saving" : "Save"}
-                  </Button>
-                </div>
-                <div className="num text-[10px] text-[var(--hq-text-faint)] mt-2">Stored in dashboard DB — not written to the vault.</div>
+                <Eyebrow className="!text-[9.5px] mb-1.5">activity · 14d</Eyebrow>
+                <Sparkline data={c.sparkline} idSeed={c.slug} area color={c.accent ?? undefined} />
               </div>
-            )}
-          </Panel>
-        ))}
+
+              <div className="mt-3 text-[12px] text-[var(--hq-text-2)]">
+                {c.lastMessage ? (
+                  <div className="flex items-start gap-1.5">
+                    <span className="truncate flex-1" title={c.lastMessage.snippet}>{c.lastMessage.snippet}</span>
+                    <span className="num text-[10.5px] text-[var(--hq-text-faint)] shrink-0">{timeAgo(c.lastMessage.createdAt)}</span>
+                  </div>
+                ) : (
+                  <span className="text-[var(--hq-text-faint)]">No messages yet</span>
+                )}
+              </div>
+
+              {c.slug === "klaily" && (
+                <div className="mt-4 pt-3 border-t border-[var(--hq-hairline)]" onClick={(e) => e.preventDefault()}>
+                  <div className="flex items-center justify-between mb-2">
+                    <Eyebrow className="!text-[9.5px]">This month · {klaily?.month || "—"}</Eyebrow>
+                    <Wallet className="w-3.5 h-3.5 text-[var(--hq-text-ghost)]" />
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <span className="num font-semibold text-[26px] leading-none text-[var(--hq-text)]">
+                      {klaily?.revenue === null || klaily?.revenue === undefined ? "—" : `$${klaily.revenue.toLocaleString("en-US")}`}
+                    </span>
+                    {klaily?.orders !== null && klaily?.orders !== undefined && (
+                      <span className="num text-[11.5px] text-[var(--hq-text-ghost)] mb-0.5">{klaily.orders} orders</span>
+                    )}
+                  </div>
+                  {klaily?.palmstreetYearly && (
+                    <div className="num text-[10.5px] text-[var(--hq-text-faint)] mt-1.5">Palmstreet ~${klaily.palmstreetYearly}/yr (vault)</div>
+                  )}
+                  <div className="flex gap-2 mt-3">
+                    <input
+                      value={revInput}
+                      onChange={e => setRevInput(e.target.value)}
+                      placeholder="Monthly revenue $"
+                      className="flex-1 min-w-0 rounded-lg border border-[var(--hq-hairline)] bg-[rgba(58,80,107,0.045)] px-3 py-1.5 text-[12.5px] text-[var(--hq-text)] outline-none focus:border-[var(--hq-accent)]"
+                    />
+                    <Button onClick={saveRevenue} disabled={saving} size="sm">
+                      <Pencil className="w-3.5 h-3.5" /> {saving ? "Saving" : "Save"}
+                    </Button>
+                  </div>
+                  <div className="num text-[10px] text-[var(--hq-text-faint)] mt-2">Stored in dashboard DB — not written to the vault.</div>
+                </div>
+              )}
+            </Panel>
+          );
+        })}
       </div>
     </div>
   );

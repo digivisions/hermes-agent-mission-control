@@ -1,284 +1,162 @@
 "use client";
 
-import { use, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Send, Loader2, User, Bot } from "lucide-react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Panel, Eyebrow, EmptyState, Button } from "@/components/ui/kit";
+import { use, useCallback, useEffect, useState } from "react";
+import { ArrowLeft, Bot, Cpu, ExternalLink } from "lucide-react";
+import { Panel, Eyebrow, EmptyState, Pill, SectionHeader } from "@/components/ui/kit";
+import { ClientChatThread } from "@/components/client-chat-thread";
+import { ApprovalCard, timeAgo, type Req } from "@/components/approval-card";
 
-const markdownComponents: Components = {
-  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-  ul: ({ children }) => <ul className="mb-2 last:mb-0 pl-4 list-disc space-y-0.5">{children}</ul>,
-  ol: ({ children }) => <ol className="mb-2 last:mb-0 pl-4 list-decimal space-y-0.5">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent)" }}>
-      {children}
-    </a>
-  ),
-  code: ({ children }) => (
-    <code
-      className="rounded px-1 py-0.5 text-[12px] num"
-      style={{ background: "var(--surface-1)", border: "1px solid var(--line)" }}
-    >
-      {children}
-    </code>
-  ),
-  pre: ({ children }) => (
-    <pre
-      className="mb-2 last:mb-0 rounded-[8px] p-2.5 text-[12px] overflow-x-auto"
-      style={{ background: "var(--surface-1)", border: "1px solid var(--line)" }}
-    >
-      {children}
-    </pre>
-  ),
-  blockquote: ({ children }) => (
-    <blockquote
-      className="mb-2 last:mb-0 pl-3 italic text-[var(--text-2)]"
-      style={{ borderLeft: "2px solid var(--line)" }}
-    >
-      {children}
-    </blockquote>
-  ),
-  table: ({ children }) => (
-    <div className="mb-2 last:mb-0 overflow-x-auto">
-      <table className="text-[12.5px] border-collapse">{children}</table>
-    </div>
-  ),
-  th: ({ children }) => (
-    <th className="px-2 py-1 text-left font-semibold" style={{ borderBottom: "1px solid var(--line)" }}>
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td className="px-2 py-1" style={{ borderBottom: "1px solid var(--line)" }}>
-      {children}
-    </td>
-  ),
-  h1: ({ children }) => <h1 className="mb-1.5 text-[15px] font-semibold">{children}</h1>,
-  h2: ({ children }) => <h2 className="mb-1.5 text-[14.5px] font-semibold">{children}</h2>,
-  h3: ({ children }) => <h3 className="mb-1 text-[14px] font-semibold">{children}</h3>,
-};
-
-type ChatRole = "user" | "assistant";
-
-interface ChatMsg {
-  id: string;
-  role: ChatRole;
-  content: string;
-  requestId: string | null;
-  requestStatus: string | null;
-  createdAt: string;
+interface ClientRow {
+  slug: string; name: string; type: string; hermesProfile: string | null;
+  model: string; status: string; accent: string | null; description: string | null;
 }
-
-const PENDING_STATUSES = new Set(["queued", "approved", "running"]);
-
-function timeLabel(d: string): string {
-  const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return "";
-  return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+interface Run {
+  id: string; kind: string; title: string; status: string; model: string | null;
+  durationMs: number | null; costUsd: number | null; createdAt: string; error: string | null;
 }
+interface Task { id: string; title: string; status: string; priority: number | null }
 
-function clientLabel(client: string): string {
-  return client
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
+function dur(ms: number | null) {
+  if (ms == null) return null;
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
+const runTone = (s: string) =>
+  s === "done" ? "up" : s === "failed" ? "down" :
+  s === "awaiting_approval" ? "warn" : s === "rejected" ? "neutral" : "accent";
 
-export default function ClientChatPage({
-  params,
-}: {
-  params: Promise<{ client: string }>;
-}) {
-  const { client } = use(params);
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+export default function ClientWorkspace({ params }: { params: Promise<{ client: string }> }) {
+  const { client: slug } = use(params);
+  const [data, setData] = useState<{ client: ClientRow; approvals: Req[]; runs: Run[]; tasks: Task[] } | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/clients/${client}/chat`);
-      if (r.ok) {
-        const d = await r.json();
-        setMessages(d.messages ?? []);
-      }
-    } catch {
-      /* ignore — retry on next poll tick */
-    }
-    setLoaded(true);
-  }, [client]);
+      const r = await fetch(`/api/clients/${slug}`);
+      if (r.status === 404) { setNotFound(true); return; }
+      if (r.ok) setData(await r.json());
+    } catch { /* next poll retries */ }
+  }, [slug]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // 10s: the rail is glanceable context, not the conversation. The chat thread
+  // runs its own 3s poll while a request is in flight.
+  useEffect(() => { load(); const iv = setInterval(load, 10_000); return () => clearInterval(iv); }, [load]);
 
-  const hasPending = messages.some(
-    (m) => m.requestId && m.requestStatus && PENDING_STATUSES.has(m.requestStatus)
+  if (notFound) return (
+    <div className="pt-10">
+      <EmptyState icon={<Bot className="w-6 h-6" />} title={`No client '${slug}' in the registry`}
+        hint="Add it to prisma/seed-clients.ts and re-run npm run db:seed:clients on the VPS." />
+    </div>
   );
-  const lastIsUnansweredUser =
-    messages.length > 0 && messages[messages.length - 1].role === "user";
-  const showTyping = hasPending || lastIsUnansweredUser;
 
-  useEffect(() => {
-    if (!showTyping) return;
-    const iv = setInterval(load, 3000);
-    return () => clearInterval(iv);
-  }, [showTyping, load]);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, showTyping]);
-
-  const submit = async () => {
-    const text = input.trim();
-    if (!text || sending) return;
-    setSending(true);
-    setInput("");
-    try {
-      const r = await fetch(`/api/clients/${client}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-      });
-      if (r.ok) {
-        await load();
-      } else {
-        setInput(text);
-      }
-    } catch {
-      setInput(text);
-    } finally {
-      setSending(false);
-    }
-  };
+  const c = data?.client;
+  const live = !!(c && c.status === "active" && c.hermesProfile);
+  const tasksByStatus = (data?.tasks ?? []).reduce<Record<string, number>>(
+    (a, t) => ((a[t.status] = (a[t.status] || 0) + 1), a), {});
 
   return (
-    <div className="relative z-10 w-full mx-auto pb-16 flex flex-col" style={{ height: "calc(100vh - 2rem)" }}>
+    <div className="relative z-10 w-full mx-auto pb-10 flex flex-col" style={{ minHeight: "calc(100vh - 2rem)" }}>
       <div className="hq-rise pt-4 pb-6">
-        <a
-          href="/clients"
-          className="inline-flex items-center gap-1.5 text-[12.5px] text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Clients
+        <a href="/clients" className="inline-flex items-center gap-1.5 text-[12.5px] text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors">
+          <ArrowLeft className="w-3.5 h-3.5" /> Clients
         </a>
-        <div className="mt-2.5">
-          <Eyebrow>Client workspace</Eyebrow>
-          <h1 className="mt-2 text-[32px] font-semibold tracking-[-0.02em] leading-none text-[var(--text)]">
-            {clientLabel(client)}
-          </h1>
-        </div>
-      </div>
-
-      <Panel className="flex-1 min-h-0 flex flex-col p-0 overflow-hidden">
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
-          {!loaded ? (
-            <div className="flex items-center justify-center h-full text-[var(--text-3)] text-[13px]">
-              Loading…
+        <div className="mt-2.5 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <Eyebrow>Client workspace</Eyebrow>
+            <div className="mt-2 flex items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ background: live ? "var(--up)" : "var(--warn)" }}
+                    title={live ? "Hermes profile active" : "No Hermes profile — run scripts/provision-profile.sh"} />
+              <h1 className="text-[32px] font-semibold tracking-[-0.02em] leading-none text-[var(--text)]">
+                {c?.name ?? slug}
+              </h1>
             </div>
-          ) : messages.length === 0 ? (
-            <EmptyState
-              icon={<Bot className="w-6 h-6" />}
-              title="Chưa có tin nhắn — gửi tin nhắn đầu tiên để bắt đầu"
-            />
-          ) : (
-            <div className="flex flex-col gap-4">
-              {messages.map((m) => (
-                <ChatBubble key={m.id} message={m} />
-              ))}
-              {showTyping && <TypingBubble />}
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-[var(--line)] p-4">
-          <div className="flex items-end gap-3">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
-              placeholder="Nhắn tin cho Hermes…"
-              rows={1}
-              className="flex-1 min-w-0 bg-transparent text-[14px] text-[var(--text)] placeholder:text-[var(--text-3)] px-3.5 py-2.5 rounded-[10px] border border-[var(--line)] focus:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] outline-none transition-colors resize-none"
-            />
-            <Button variant="primary" onClick={submit} disabled={sending || !input.trim()}>
-              <Send className="w-3.5 h-3.5" />
-              Send
-            </Button>
+            {c?.description && <p className="mt-2 text-[12.5px] text-[var(--text-2)] max-w-xl">{c.description}</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            {c && <Pill tone="neutral">{c.type}</Pill>}
+            {c && <Pill tone="accent"><Cpu className="w-3 h-3" /> {c.model}</Pill>}
+            <a href="/agents" className="inline-flex items-center gap-1 text-[12px] text-[var(--text-3)] hover:text-[var(--text)]">
+              Agents <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
         </div>
-      </Panel>
-    </div>
-  );
-}
-
-function ChatBubble({ message }: { message: ChatMsg }) {
-  const isUser = message.role === "user";
-  return (
-    <div className={`flex items-start gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
-      <div
-        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-        style={{
-          background: "var(--surface-2)",
-          color: "var(--text-3)",
-        }}
-      >
-        {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
       </div>
-      <div className={`flex flex-col gap-1 max-w-[75%] ${isUser ? "items-end" : "items-start"}`}>
-        <div
-          className={`rounded-[14px] px-3.5 py-2.5 text-[13.5px] leading-relaxed ${
-            isUser ? "text-[var(--bg)]" : "text-[var(--text)]"
-          }`}
-          style={
-            isUser
-              ? { background: "var(--text)" }
-              : { background: "var(--surface-2)", border: "1px solid var(--line)" }
-          }
-        >
-          {isUser ? (
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
-          ) : (
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start flex-1 min-h-0">
+        <div className="xl:col-span-2 h-full min-h-0" style={{ minHeight: "62vh" }}>
+          <Panel className="h-full min-h-0 flex flex-col p-0 overflow-hidden">
+            <ClientChatThread
+              client={slug}
+              disabled={!c?.hermesProfile}
+              disabledReason={`No Hermes profile for ${c?.name ?? slug} yet — run scripts/provision-profile.sh ${slug} on the VPS.`}
+            />
+          </Panel>
+        </div>
+
+        <div className="xl:col-span-1 flex flex-col gap-5">
+          {/* 1 — Needs decision: always top; it's why he opened the page */}
+          <div>
+            <SectionHeader label="Needs decision"
+              action={<Pill tone={(data?.approvals.length ?? 0) > 0 ? "warn" : "neutral"}>{data?.approvals.length ?? 0}</Pill>} />
+            {data && data.approvals.length === 0 ? (
+              <Panel className="p-2"><EmptyState title="Nothing needs you for this client." /></Panel>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {data?.approvals.map((r) => <ApprovalCard key={r.id} req={r} compact onAction={load} />)}
+              </div>
+            )}
+          </div>
+
+          {/* 2 — Recent agent runs: doubles as the per-client audit log */}
+          <div>
+            <SectionHeader label="Recent agent runs" />
+            <Panel className="p-4">
+              {data?.runs.length ? (
+                <div className="flex flex-col gap-3">
+                  {data.runs.map((r) => (
+                    <div key={r.id} className="flex items-start gap-2.5">
+                      <Pill tone={runTone(r.status)} className="shrink-0 mt-0.5">{r.status}</Pill>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[12.5px] text-[var(--text-2)] truncate" title={r.title}>{r.title}</div>
+                        <div className="num text-[10px] text-[var(--text-3)] mt-0.5 flex flex-wrap gap-x-2">
+                          <span>{r.kind}</span>
+                          <span>{timeAgo(r.createdAt)}</span>
+                          {dur(r.durationMs) && <span>{dur(r.durationMs)}</span>}
+                          {r.costUsd != null && <span>${r.costUsd.toFixed(4)}</span>}
+                          {r.model && <span>{r.model}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[12.5px] text-[var(--text-3)] py-6 text-center">No runs yet</div>
+              )}
+            </Panel>
+          </div>
+
+          {/* 3 — Tasks: hidden entirely when the board is empty */}
+          {(data?.tasks.length ?? 0) > 0 && (
             <div>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {message.content}
-              </ReactMarkdown>
+              <SectionHeader label="Tasks" />
+              <Panel className="p-4">
+                <div className="flex gap-2 mb-3">
+                  {["todo", "doing", "done"].map((s) => (
+                    <Pill key={s} tone={s === "done" ? "up" : s === "doing" ? "accent" : "neutral"}>
+                      {tasksByStatus[s] || 0} {s}
+                    </Pill>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2">
+                  {data!.tasks.slice(0, 8).map((t) => (
+                    <div key={t.id} className="text-[12.5px] text-[var(--text-2)] truncate" title={t.title}>· {t.title}</div>
+                  ))}
+                </div>
+              </Panel>
             </div>
           )}
         </div>
-        <span className="num text-[10.5px] text-[var(--text-3)] px-1">
-          {timeLabel(message.createdAt)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function TypingBubble() {
-  return (
-    <div className="flex items-start gap-2.5">
-      <div
-        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-        style={{ background: "var(--surface-2)", color: "var(--text-3)" }}
-      >
-        <Bot className="w-3.5 h-3.5" />
-      </div>
-      <div
-        className="rounded-[14px] px-3.5 py-2.5 flex items-center gap-2"
-        style={{ background: "var(--surface-2)", border: "1px solid var(--line)" }}
-      >
-        <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text-3)]" />
-        <span className="text-[12.5px] text-[var(--text-3)]">Hermes is typing…</span>
       </div>
     </div>
   );
