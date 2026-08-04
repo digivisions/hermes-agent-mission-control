@@ -48,6 +48,7 @@ const THROTTLE_MS = Math.max(
 const KEYCHAIN_TIMEOUT_MS = 5000;
 const API_TIMEOUT_MS = 6000;
 const CREDENTIALS_FILE = expandHome("~/.claude/.credentials.json");
+const TOKEN_EXPORT_FILE = expandHome("~/.hermes/state/cc-oauth-token");
 
 function out(obj) {
   process.stdout.write(JSON.stringify(obj));
@@ -101,14 +102,8 @@ function readKeychainToken() {
   }
 }
 
-/** Legacy fallback for older Claude Code versions that never used the Keychain. */
-function readFileToken() {
-  let raw;
-  try {
-    raw = fs.readFileSync(CREDENTIALS_FILE, "utf8");
-  } catch {
-    return null;
-  }
+/** Reads a Claude OAuth JSON blob (keychain blob or exported token file) for its access token. */
+function parseOauthBlob(raw) {
   try {
     const data = JSON.parse(raw);
     const accessToken = data?.claudeAiOauth?.accessToken;
@@ -120,7 +115,35 @@ function readFileToken() {
   }
 }
 
+/**
+ * Token exported by the LaunchAgent (com.hermes.cc-token-export): keychain is
+ * GUI-session-only, so a scheduled job copies the token to a 0600 file the
+ * VPS->Mac SSH session CAN read. This is the FIRST source.
+ */
+function readTokenExportFile() {
+  let raw;
+  try {
+    raw = fs.readFileSync(TOKEN_EXPORT_FILE, "utf8");
+  } catch {
+    return null;
+  }
+  return parseOauthBlob(raw);
+}
+
+/** Legacy fallback for older Claude Code versions that never used the Keychain. */
+function readFileToken() {
+  let raw;
+  try {
+    raw = fs.readFileSync(CREDENTIALS_FILE, "utf8");
+  } catch {
+    return null;
+  }
+  return parseOauthBlob(raw);
+}
+
 function readAccessToken() {
+  const exported = readTokenExportFile();
+  if (exported) return exported;
   const keychain = readKeychainToken();
   if (keychain) return keychain;
   return readFileToken();
