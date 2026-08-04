@@ -454,6 +454,7 @@ model AgentRequest {
   kind          String    @default("oneshot") // "oneshot" | "kanban" | "chat"
   title         String
   prompt        String?
+  profile       String?                       // Hermes profile to run with (e.g. "klaily"); null = default profile
   sideEffecting Boolean   @default(false)
   status        String    @default("queued")  // queued | awaiting_approval | approved | running | done | failed | rejected
   result        String?
@@ -467,6 +468,19 @@ model AgentRequest {
 
   @@index([status])
   @@index([createdAt])
+}
+
+// ─── Per-client chat (Phase 1) ───────────────────────────────────
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  client    String   // e.g. 'klaily'
+  role      String   // 'user' | 'assistant'
+  content   String   @db.Text
+  requestId String?  // AgentRequest that produced this message
+  createdAt DateTime @default(now())
+
+  @@index([client, createdAt])
 }
 
 model AgentEvent {
