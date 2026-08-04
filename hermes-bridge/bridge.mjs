@@ -238,12 +238,13 @@ async function maybeDailyBrief() {
 async function runRequest(r) {
   await q(`UPDATE "AgentRequest" SET status='running', "startedAt"=now(), "updatedAt"=now() WHERE id=$1`, [r.id]);
   await emit("run", `Started: ${r.title}`, { level: "info", meta: { requestId: r.id, kind: r.kind } });
+  const profileArgs = r.profile ? ["--profile", r.profile] : [];
   try {
     let result = "";
     if (r.kind === "oneshot" || r.kind === "chat") {
-      result = (await hermes(["-z", r.prompt || r.title], { timeout: RUN_TIMEOUT_MS })).trim();
+      result = (await hermes([...profileArgs, "-z", r.prompt || r.title], { timeout: RUN_TIMEOUT_MS })).trim();
     } else if (r.kind === "kanban") {
-      result = (await hermes(["kanban", "--board", BOARD, "create", "--json", r.title], { timeout: 20000 })).trim();
+      result = (await hermes([...profileArgs, "kanban", "--board", BOARD, "create", "--json", r.title], { timeout: 20000 })).trim();
     } else if (r.kind.startsWith("cron.")) {
       const op = r.kind.split(".")[1];
       const a = JSON.parse(r.prompt || "{}");
@@ -256,7 +257,7 @@ async function runRequest(r) {
         : op === "edit"   ? ["cron", "edit", a.id || a.name]
         : null;
       if (!argv) throw new Error(`unknown cron op ${op}`);
-      result = (await hermes(argv, { timeout: 20000 })).trim();
+      result = (await hermes([...profileArgs, ...argv], { timeout: 20000 })).trim();
       await mirrorCrons();
     } else if (r.kind === "memory.write") {
       const e = JSON.parse(r.prompt || "{}");
@@ -273,6 +274,13 @@ async function runRequest(r) {
     }
     await q(`UPDATE "AgentRequest" SET status='done', result=$2, "finishedAt"=now(), "updatedAt"=now() WHERE id=$1`,
       [r.id, result.slice(0, 8000)]);
+    if (r.profile && (r.kind === "oneshot" || r.kind === "chat")) {
+      await q(
+        `INSERT INTO "ChatMessage" (id, client, role, content, "requestId", "createdAt")
+         VALUES ($1,$2,'assistant',$3,$4, now())`,
+        [randomUUID(), r.profile, result, r.id]
+      );
+    }
     await emit("run", `Done: ${r.title}`, { level: "up", detail: result.slice(0, 400), meta: { requestId: r.id } });
   } catch (e) {
     const msg = (e.stderr || e.message || "error").toString().split("\n")[0].slice(0, 600);
