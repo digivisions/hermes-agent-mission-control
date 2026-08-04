@@ -19,7 +19,7 @@ async function main() {
     // provisioning script owns those once a profile is live.
     await prisma.client.upsert({
       where:  { slug: c.slug },
-      update: { name: c.name, type: c.type, accent: c.accent, description: c.description },
+      update: { name: c.name, type: c.type, accent: c.accent, description: c.description, repoPath: c.repoPath ?? null },
       create: { ...c, model: "deepseek-v4-flash" },
     });
     console.log(`✓ ${c.slug}`);
