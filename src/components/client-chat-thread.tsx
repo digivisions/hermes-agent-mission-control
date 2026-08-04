@@ -134,14 +134,19 @@ function StatusChip({ msg, now, kind }: { msg: ChatMsg; now: number; kind?: stri
 
 export function ClientChatThread({
   client,
+  basePath,
   disabled = false,
   disabledReason,
 }: {
   client: string;
+  /** overrides the fetch base — defaults to `/api/clients/${client}`. Pass
+   *  `/api/projects/${slug}` to reuse this thread for a Project workspace. */
+  basePath?: string;
   /** true when the client has no Hermes profile — composer is read-only */
   disabled?: boolean;
   disabledReason?: string;
 }) {
+  const base = basePath ?? `/api/clients/${client}`;
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loaded, setLoaded]     = useState(false);
   const [input, setInput]       = useState("");
@@ -154,7 +159,7 @@ export function ClientChatThread({
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/clients/${client}/chat`);
+      const r = await fetch(`${base}/chat`);
       if (r.ok) {
         const data = await r.json();
         setMessages(data.messages ?? []);
@@ -163,9 +168,9 @@ export function ClientChatThread({
       }
     } catch { /* ignore — next poll retries */ }
     setLoaded(true);
-  }, [client]);
+  }, [base]);
 
-  useEffect(() => { setLoaded(false); setMessages([]); load(); }, [client, load]);
+  useEffect(() => { setLoaded(false); setMessages([]); load(); }, [base, load]);
 
   const hasLive    = messages.some((m) => m.requestStatus && POLLING.has(m.requestStatus));
   const hasWorking = messages.some((m) => m.requestStatus && PENDING.has(m.requestStatus));
@@ -190,7 +195,7 @@ export function ClientChatThread({
     setSending(true);
     setInput("");
     try {
-      const r = await fetch(`/api/clients/${client}/chat`, {
+      const r = await fetch(`${base}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, sideEffecting: mode === "action" }),

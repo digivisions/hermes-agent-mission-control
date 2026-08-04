@@ -154,8 +154,9 @@ const PROJECTS = [
 async function main() {
   for (const [i, p] of PROJECTS.entries()) {
     // Same discipline as seed-clients.ts: update refreshes the descriptive
-    // fields but NEVER clobbers status / priority / sortOrder / contextNotes.
-    // Those become Andy's the moment he touches the UI.
+    // fields but NEVER clobbers status / priority / sortOrder / contextNotes /
+    // hermesProfile. Those become Andy's (or the provisioning script's) the
+    // moment they're touched outside this seed.
     const { slug, ...rest } = p;
     await prisma.project.upsert({
       where: { slug },
@@ -164,7 +165,9 @@ async function main() {
         nextActions: rest.nextActions, waitingOn: rest.waitingOn,
         location: rest.location, accent: rest.accent, description: rest.description,
       },
-      create: { slug, ...rest, sortOrder: i },
+      // hermesProfile = slug for every seeded project — 1:1 with the Hermes
+      // profile provisioned by scripts/provision-profile.sh <slug>.
+      create: { slug, ...rest, hermesProfile: slug, sortOrder: i },
     });
     console.log(`✓ ${slug}`);
   }

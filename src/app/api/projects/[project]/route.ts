@@ -11,11 +11,35 @@ const PROJECT_PATCHABLE = [
   "waitingOn", "location", "accent", "description", "contextNotes", "documents",
 ] as const;
 
+// One payload for the whole workspace right rail, same shape as
+// /api/clients/[client] — the page polls this alongside the chat.
 export async function GET(_req: Request, { params }: { params: Promise<{ project: string }> }) {
   const { project: slug } = await params;
   const project = await prisma.project.findUnique({ where: { slug } });
   if (!project) return Response.json({ error: "not_found", slug }, { status: 404 });
-  return Response.json({ project });
+
+  const profile = project.hermesProfile ?? slug;
+
+  const [approvals, runs, tasks] = await Promise.all([
+    prisma.agentRequest.findMany({
+      where: { profile, status: "awaiting_approval" },
+      orderBy: { createdAt: "desc" }, take: 20,
+    }),
+    prisma.agentRequest.findMany({
+      where: { profile }, orderBy: { createdAt: "desc" }, take: 10,
+      select: { id: true, kind: true, title: true, status: true, model: true,
+                durationMs: true, costUsd: true, createdAt: true, error: true },
+    }),
+    // Same convention as Client: HermesTask has no project column, so the
+    // board slug doubles as the per-project board id. Empty is honest.
+    prisma.hermesTask.findMany({
+      where: { board: slug },
+      orderBy: [{ status: "asc" }, { priority: "desc" }], take: 25,
+      select: { id: true, title: true, status: true, priority: true },
+    }),
+  ]);
+
+  return Response.json({ project, approvals, runs, tasks });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ project: string }> }) {

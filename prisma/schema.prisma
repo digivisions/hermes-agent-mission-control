@@ -600,24 +600,25 @@ model Client {
 // through 74e24a3; prisma/seed-projects.ts carries that content forward.
 
 model Project {
-  id           String   @id @default(cuid())
-  slug         String   @unique // URL-safe id; stable across renames
-  name         String
-  type         String   @default("internal") // 'internal' | 'product' | 'infra' | 'client-site' | 'personal'
-  status       String   @default("planned") // 'active'|'ongoing'|'paused'|'planned'|'blocked'|'complete'|'archived'
-  priority     String   @default("medium") // 'high' | 'medium' | 'low'
-  sortOrder    Int      @default(0) // manual drag order on /projects; ties broken by priority then name
-  tags         String[] @default([]) // Postgres text[]
-  overview     String?  @db.Text
-  nextActions  String[] @default([])
-  waitingOn    String[] @default([])
-  location     String? // canonical path on disk, e.g. '~/1-Development/Micro_Recorder'
-  accent       String? // hex, for the card chip
-  description  String? // one-line blurb (short; `overview` is the long form)
-  contextNotes String?  @db.Text // free-form markdown, same contract as Client.contextNotes
-  documents    Json? // [{ title, url, note? }] — references to records (Drive/OneDrive links, file paths)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  slug          String   @unique // URL-safe id; stable across renames
+  name          String
+  type          String   @default("internal") // 'internal' | 'product' | 'infra' | 'client-site' | 'personal'
+  status        String   @default("planned") // 'active'|'ongoing'|'paused'|'planned'|'blocked'|'complete'|'archived'
+  priority      String   @default("medium") // 'high' | 'medium' | 'low'
+  hermesProfile String? // Hermes profile slug; null = no profile provisioned
+  sortOrder     Int      @default(0) // manual drag order on /projects; ties broken by priority then name
+  tags          String[] @default([]) // Postgres text[]
+  overview      String?  @db.Text
+  nextActions   String[] @default([])
+  waitingOn     String[] @default([])
+  location      String? // canonical path on disk, e.g. '~/1-Development/Micro_Recorder'
+  accent        String? // hex, for the card chip
+  description   String? // one-line blurb (short; `overview` is the long form)
+  contextNotes  String?  @db.Text // free-form markdown, same contract as Client.contextNotes
+  documents     Json? // [{ title, url, note? }] — references to records (Drive/OneDrive links, file paths)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([status])
   @@index([sortOrder])

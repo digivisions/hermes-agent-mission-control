@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FolderKanban, Clock, GripVertical, Pencil, Plus, FolderOpen } from "lucide-react";
+import { FolderKanban, Clock, GripVertical, Pencil, Plus, FolderOpen, MessageSquare } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
@@ -61,13 +61,26 @@ function SortableProject({ id, project, onEdit, onFiles }: { id: string; project
               <FolderKanban className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-[16px] font-semibold text-[var(--hq-text)] truncate" style={{ fontFamily: "var(--font-display)" }}>{project.name}</h3>
+              <a href={`/projects/${project.slug}`}
+                className="text-[16px] font-semibold text-[var(--hq-text)] truncate block hover:underline decoration-1 underline-offset-2"
+                style={{ fontFamily: "var(--font-display)" }}
+                title={`Mở workspace — ${project.name}`}>
+                {project.name}
+              </a>
               <div className="num text-[10.5px] text-[var(--hq-text-ghost)] mt-0.5 flex items-center gap-1">
                 <Clock className="w-3 h-3" /> {timeAgo(project.updatedAt)}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            <a
+              href={`/projects/${project.slug}`}
+              aria-label={`Mở workspace cho ${project.name}`}
+              title="Mở workspace — chat với agent"
+              className="p-1 rounded text-[var(--text-3)] hover:text-[var(--text)] transition-colors"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+            </a>
             <button
               aria-label={`Files for ${project.name}`}
               onClick={() => project.location && onFiles(project)}
