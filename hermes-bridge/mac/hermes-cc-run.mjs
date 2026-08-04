@@ -214,7 +214,10 @@ async function main() {
   const diffCapture = await captureDiff(repoReal, worktree);
 
   if (!parsed) {
-    const firstLine = (runResult.stderr || runResult.stdout || "claude produced no parseable output").split("\n")[0];
+    const raw = runResult.stderr || runResult.stdout;
+    const firstLine = raw
+      ? `${raw.split("\n")[0]} (claude returned no JSON)`
+      : "claude produced no parseable output";
     fail(firstLine.slice(0, 600), {
       branch, worktree,
       diffStat: diffCapture.diffStat,
@@ -252,7 +255,15 @@ async function main() {
   };
 
   if (parsed.is_error === true) {
-    fail(String(parsed.subtype || "claude reported is_error"), telemetry);
+    // Claude Code's `subtype` is meant to describe the failure (e.g. "error_max_turns"),
+    // but on some errors (e.g. api_error / unknown model) it stays "success" while
+    // `result` carries the actual human-readable message — prefer that when subtype lies.
+    const resultMsg = typeof parsed.result === "string" ? parsed.result.trim() : "";
+    const subtype = parsed.subtype;
+    const errorMsg = subtype && subtype !== "success"
+      ? subtype
+      : (resultMsg || subtype || "claude reported is_error");
+    fail(errorMsg, telemetry);
     return;
   }
 
