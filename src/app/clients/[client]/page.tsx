@@ -7,6 +7,7 @@ import { ClientChatThread } from "@/components/client-chat-thread";
 import { ApprovalCard, timeAgo, type Req } from "@/components/approval-card";
 import { Markdown } from "@/components/markdown";
 import { ClientEditor } from "@/components/client-editor";
+import { FileCenter } from "@/components/file-center";
 import type { DocRef } from "@/components/documents-field";
 
 interface ClientRow {
@@ -168,6 +169,9 @@ export default function ClientWorkspace({ params }: { params: Promise<{ client: 
               </button>
             )}
           </div>
+
+          {/* File Center: real files from the client's repo on the Mac (SSH) */}
+          <FileCenter client={slug} />
 
           {/* Documents: reference links only — no upload/storage yet */}
           {c?.documents && c.documents.length > 0 && (
