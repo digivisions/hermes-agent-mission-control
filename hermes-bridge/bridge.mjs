@@ -26,6 +26,25 @@ import os from "node:os";
 import { telegramEnabled, sendMessage, approvalMessage, baseUrl } from "./telegram.mjs";
 import { ccEnabled, ccProbe, ccRun, formatCcResult, ccTarget } from "./claude-code.mjs";
 import { classify, briefToPrompt } from "./triage.mjs";
+import { collectInfra } from "./infra.mjs";
+
+/* Load hermes-bridge/.env without a dependency. process.env (PM2 ecosystem)
+ * always wins — the file only fills gaps. Secrets live here, NOT in the
+ * git-tracked ecosystem.config.cjs. Must run before ANY process.env.X read
+ * below — every const in this module that falls back to a `.env`-only var
+ * (not also set in ecosystem.config.cjs) needs loadEnvFile() to have already
+ * run, since top-level consts are evaluated once, immediately. */
+function loadEnvFile() {
+  const f = path.join(path.dirname(new URL(import.meta.url).pathname), ".env");
+  let raw; try { raw = fs.readFileSync(f, "utf8"); } catch { return; }
+  for (const line of raw.split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
+    if (!m) continue;
+    const v = m[2].trim().replace(/^["']|["']$/g, "");
+    if (!(m[1] in process.env)) process.env[m[1]] = v;
+  }
+}
+loadEnvFile();
 
 const execFileP = promisify(execFile);
 const HERMES = process.env.HERMES_BIN || "hermes";
@@ -55,6 +74,16 @@ const TIMEOUT_SEC  = Math.ceil(RUN_TIMEOUT_MS / 1000) + 60;                   //
 const USAGE_DIR    = process.env.BRIDGE_USAGE_DIR || path.join(os.tmpdir(), "hermes-bridge-usage");
 let usageWarned    = false;                                                   // warn-once when usage files never appear
 
+// When HERMES_BIN is a `docker exec` wrapper, the usage file is written by
+// the container's user and its parent dir is typically not traversable by
+// the bridge's host user even if the leaf file/dir itself is world-readable
+// (a 700 ancestor blocks traversal regardless of the leaf's own mode). Set
+// BRIDGE_USAGE_DOCKER to the container name to read the file back out via
+// `docker exec <container> cat <path>` instead of the host filesystem.
+const USAGE_DOCKER          = process.env.BRIDGE_USAGE_DOCKER || "";
+const USAGE_DOCKER_HOST_PFX = process.env.BRIDGE_USAGE_DOCKER_HOST_PREFIX || USAGE_DIR;
+const USAGE_DOCKER_CTR_PFX  = process.env.BRIDGE_USAGE_DOCKER_CONTAINER_PREFIX || "";
+
 /* ── Phase 3: autonomous triage → Claude Code (Spec E) ── */
 const CC_SSH_TIMEOUT_S    = Number(process.env.CC_SSH_TIMEOUT_S || 900);
 const CC_TIMEOUT_SEC      = CC_SSH_TIMEOUT_S + 120;                            // E19: sweepStale's kind-aware deadline
@@ -70,21 +99,6 @@ let ccWarned = false;
 let ccOfflineSince = null;
 let ccNudgeSent = false;
 let triageStats = { classified: 0, exempt: 0, failed: 0, costUsd: 0, routes: { chat: 0, engineering: 0, design: 0, "infra-ops": 0 } };
-
-/* Load hermes-bridge/.env without a dependency. process.env (PM2 ecosystem)
- * always wins — the file only fills gaps. Secrets live here, NOT in the
- * git-tracked ecosystem.config.cjs. */
-function loadEnvFile() {
-  const f = path.join(path.dirname(new URL(import.meta.url).pathname), ".env");
-  let raw; try { raw = fs.readFileSync(f, "utf8"); } catch { return; }
-  for (const line of raw.split("\n")) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
-    if (!m) continue;
-    const v = m[2].trim().replace(/^["']|["']$/g, "");
-    if (!(m[1] in process.env)) process.env[m[1]] = v;
-  }
-}
-loadEnvFile();
 
 const DB_URL = process.env.DATABASE_URL || "";
 if (!DB_URL) { console.error("DATABASE_URL is required (use the direct postgres:// URL, not a prisma:// Accelerate URL)"); process.exit(1); }
@@ -122,24 +136,39 @@ async function setStore(key, data) {
 
 /**
  * Read and delete the JSON usage report `hermes --usage-file` leaves behind.
- * Returns null if it isn't there — which is the expected outcome if HERMES_BIN
- * is a `docker exec` wrapper and USAGE_DIR isn't bind-mounted into the
- * container. We warn once and carry on with NULL telemetry columns; a missing
- * cost number must never fail an otherwise-successful agent run.
+ * Returns null if it isn't there and can't be read via the docker fallback —
+ * we warn once and carry on with NULL telemetry columns; a missing cost
+ * number must never fail an otherwise-successful agent run.
  */
-function readUsage(file) {
+async function readUsage(file) {
   let raw;
-  try { raw = fs.readFileSync(file, "utf8"); }
-  catch {
+  try {
+    raw = fs.readFileSync(file, "utf8");
+    try { fs.unlinkSync(file); } catch { /* best effort */ }
+  } catch {
+    raw = await readUsageViaDocker(file);
+  }
+  if (raw == null) {
     if (!usageWarned) {
       usageWarned = true;
       log(`usage: no report at ${file} — telemetry columns will stay NULL. ` +
-          `If HERMES_BIN is a docker wrapper, bind-mount BRIDGE_USAGE_DIR into the container.`);
+          `If HERMES_BIN is a docker wrapper, set BRIDGE_USAGE_DOCKER (+ prefix envs) ` +
+          `so the bridge can read it via 'docker exec cat'.`);
     }
     return null;
   }
   try { return JSON.parse(raw); } catch { return null; }
-  finally { try { fs.unlinkSync(file); } catch { /* best effort */ } }
+}
+
+/** Fallback read for when the host user can't traverse to `file` directly. */
+async function readUsageViaDocker(file) {
+  if (!USAGE_DOCKER || !USAGE_DOCKER_CTR_PFX || !file.startsWith(USAGE_DOCKER_HOST_PFX)) return null;
+  const ctrPath = USAGE_DOCKER_CTR_PFX + file.slice(USAGE_DOCKER_HOST_PFX.length);
+  try {
+    const { stdout } = await execFileP("docker", ["exec", USAGE_DOCKER, "cat", ctrPath], { timeout: 10000 });
+    await execFileP("docker", ["exec", USAGE_DOCKER, "rm", "-f", ctrPath]).catch(() => {});
+    return stdout;
+  } catch { return null; }
 }
 
 function usageColumns(u, startedMs) {
@@ -337,11 +366,15 @@ async function runRequest(r) {
       // --usage-file is one-shot only and is written even on failure, so it is
       // the one place token/cost telemetry is available without re-plumbing
       // the bridge onto an OpenAI-compatible endpoint.
-      fs.mkdirSync(USAGE_DIR, { recursive: true });
+      // Best-effort: in docker-wrapper mode the dir lives inside the
+      // container (already created there) and the host user may not even
+      // be able to traverse its own bind-mount parent — never let that
+      // block the run.
+      try { fs.mkdirSync(USAGE_DIR, { recursive: true }); } catch { /* see readUsage/readUsageViaDocker fallback */ }
       const usagePath = path.join(USAGE_DIR, `${r.id}.json`);
       result = (await hermes([...profileArgs, "--usage-file", usagePath, "-z", r.prompt || r.title],
         { timeout: RUN_TIMEOUT_MS })).trim();
-      usage = readUsage(usagePath);
+      usage = await readUsage(usagePath);
     } else if (r.kind === "kanban") {
       result = (await hermes([...profileArgs, "kanban", "--board", BOARD, "create", "--json", r.title], { timeout: 20000 })).trim();
     } else if (r.kind.startsWith("cron.")) {
@@ -456,7 +489,7 @@ async function triageBatch() {
       else triageStats.classified++;
       if (verdict.route && verdict.route in triageStats.routes) triageStats.routes[verdict.route]++;
       if (verdict.usagePath) {
-        const u = readUsage(verdict.usagePath);
+        const u = await readUsage(verdict.usagePath);
         if (Number.isFinite(u?.estimated_cost_usd)) triageStats.costUsd += u.estimated_cost_usd;
       }
 
@@ -768,6 +801,7 @@ async function mirrorTick() {
   try { await maybeDailyBrief();} catch (e) { log("maybeDailyBrief err", e.message); }
   try { await heartbeat();      } catch (e) { log("heartbeat err", e.message); }
   try { await writeTriageStats();} catch (e) { log("triageStats err", e.message); }
+  await collectInfra().then((d) => setStore("infra-health", d)).catch((e) => log("infra err", e.message));
 }
 
 async function main() {

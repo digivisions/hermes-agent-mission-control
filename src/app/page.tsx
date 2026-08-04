@@ -16,6 +16,14 @@ interface Project {
 }
 interface InfraService { name: string; up: boolean }
 interface InfraData { services: InfraService[]; allUp: boolean; mounts: { label: string; mounted: boolean }[]; macConnected: boolean; vaultSyncedAt: string | null; generatedAt: string }
+interface InfraHost {
+  host: string; role: string; status: "up" | "down" | "degraded";
+  uptimeS?: number | null; load1?: number | null;
+  memUsedMb?: number | null; memTotalMb?: number | null;
+  diskUsedPct?: number | null; detail?: string | null; lastError?: string | null;
+  ts?: string;
+}
+interface InfraHealth { hosts: InfraHost[]; ts: string }
 
 interface Cockpit {
   tiles: { pendingApprovals: number; activeRuns: number; infraAlerts: number;
@@ -41,6 +49,14 @@ function timeAgo(d: string | null) {
   if (h > 0) return `${h}h ago`;
   if (m > 0) return `${m}m ago`;
   return "just now";
+}
+
+function humanizeUptime(s: number | null | undefined) {
+  if (s == null) return "—";
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 const statusTone: Record<string, "up" | "warn" | "down" | "neutral"> = {
@@ -109,6 +125,52 @@ function InfraPanel({ infra }: { infra: InfraData | null }) {
         <div className="num text-[10px] text-[var(--hq-text-faint)]">vault synced {timeAgo(infra?.vaultSyncedAt ?? null)}</div>
       </div>
     </>
+  );
+}
+
+/** Fleet health across every host the bridge can reach — Mac, VPSes, cron. */
+function InfrastructureHealthPanel({ data }: { data: InfraHealth | null }) {
+  const hosts = data?.hosts ?? [];
+  return (
+    <Panel className="p-6 mb-6 hq-rise" style={rise(11)}>
+      <SectionHeader label="Infrastructure" title="Fleet health" />
+      {hosts.length === 0 ? (
+        <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-10 text-center">no data yet</div>
+      ) : (
+        <div className="space-y-3">
+          {hosts.map((h) => {
+            const dot = h.status === "up" ? "var(--hq-up)" : h.status === "degraded" ? "var(--hq-warn)" : "var(--hq-down)";
+            const memText = h.memTotalMb != null && h.memUsedMb != null
+              ? `${(h.memUsedMb / 1024).toFixed(1)}/${(h.memTotalMb / 1024).toFixed(1)} GB`
+              : "—";
+            return (
+              <div key={h.host} className="flex items-center gap-3.5 rounded-xl border border-[var(--hq-hairline)] bg-[var(--hq-elev-1)] px-4 py-3">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dot }} />
+                <div className="min-w-0 w-36 shrink-0">
+                  <div className="text-[13px] font-medium text-[var(--hq-text)] truncate">{h.host}</div>
+                  <div className="text-[10.5px] text-[var(--text-2)] truncate">{h.role}</div>
+                </div>
+                <div className="num text-[11.5px] text-[var(--hq-text-ghost)] w-16 shrink-0">{humanizeUptime(h.uptimeS)}</div>
+                <div className="num text-[11.5px] text-[var(--hq-text-ghost)] w-14 shrink-0">{h.load1 != null ? h.load1.toFixed(2) : "—"}</div>
+                <div className="num text-[11.5px] text-[var(--hq-text-ghost)] w-28 shrink-0">{memText}</div>
+                <div className="flex-1 min-w-[90px]">
+                  {h.diskUsedPct != null ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--hq-hairline)" }}>
+                        <div className="h-full rounded-full" style={{ width: `${h.diskUsedPct}%`, background: h.diskUsedPct > 85 ? "var(--hq-down)" : "var(--accent)" }} />
+                      </div>
+                      <span className="num text-[11px] text-[var(--hq-text-ghost)] w-9 text-right">{h.diskUsedPct}%</span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-[var(--hq-text-ghost)] truncate">{h.detail ?? h.lastError ?? "—"}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -229,6 +291,7 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [infra, setInfra] = useState<InfraData | null>(null);
   const [cockpit, setCockpit] = useState<Cockpit | null>(null);
+  const [infraHealth, setInfraHealth] = useState<InfraHealth | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -242,6 +305,7 @@ export default function Dashboard() {
       fetch("/api/projects").then(r => r.ok ? r.json() : null).then(d => { if (d?.projects) setProjects(d.projects); }).catch(() => {});
       fetch("/api/infra").then(r => r.ok ? r.json() : null).then(d => { if (d) setInfra(d); }).catch(() => {});
       fetch("/api/hermes/cockpit").then(r => r.ok ? r.json() : null).then(d => { if (d) setCockpit(d); }).catch(() => {});
+      fetch("/api/hermes/infra").then(r => r.ok ? r.json() : null).then(d => { if (d) setInfraHealth(d); }).catch(() => {});
     };
     load();
     const iv = setInterval(load, 30_000);
@@ -307,6 +371,8 @@ export default function Dashboard() {
           <Eyebrow>Recent Activity</Eyebrow><div className="mt-4 flex-1"><ActivityPanel /></div>
         </Panel>
       </div>
+
+      <InfrastructureHealthPanel data={infraHealth} />
     </div>
   );
 }
