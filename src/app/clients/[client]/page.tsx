@@ -109,7 +109,7 @@ export default function ClientWorkspace({ params }: { params: Promise<{ client: 
               <Panel className="p-2"><EmptyState title="Nothing needs you for this client." /></Panel>
             ) : (
               <div className="flex flex-col gap-2.5">
-                {data?.approvals.map((r) => <ApprovalCard key={r.id} req={r} compact onAction={load} />)}
+                {data?.approvals.map((r) => <ApprovalCard key={r.id} req={r} onAction={load} />)}
               </div>
             )}
           </div>

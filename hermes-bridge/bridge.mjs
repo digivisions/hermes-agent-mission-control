@@ -23,12 +23,15 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { telegramEnabled, sendMessage, approvalMessage, baseUrl } from "./telegram.mjs";
 
 const execFileP = promisify(execFile);
 const HERMES = process.env.HERMES_BIN || "hermes";
 const BOARD = process.env.HERMES_BOARD || "default";
 const POLL_MS = Number(process.env.BRIDGE_POLL_MS || 5000);
 const MIRROR_MS = Number(process.env.BRIDGE_MIRROR_MS || 30000);
+const NOTIFY_BATCH = Number(process.env.TELEGRAM_NOTIFY_BATCH || 5);
+const APPROVAL_TTL_H = Number(process.env.APPROVAL_TTL_HOURS || 24);
 const RUN_TIMEOUT_MS = Number(process.env.BRIDGE_RUN_TIMEOUT_MS || 240000);
 const WIKI_DIR = process.env.HERMES_WIKI || path.join(os.homedir(), ".hermes", "wiki");
 const BRIEF_HOUR = Number(process.env.BRIEF_HOUR || 8);   // local hour to auto-generate the daily brief
@@ -49,6 +52,21 @@ const STALE_SEC    = Number(process.env.BRIDGE_STALE_SEC || 600);            // 
 const TIMEOUT_SEC  = Math.ceil(RUN_TIMEOUT_MS / 1000) + 60;                   // our own run overran its hard timeout
 const USAGE_DIR    = process.env.BRIDGE_USAGE_DIR || path.join(os.tmpdir(), "hermes-bridge-usage");
 let usageWarned    = false;                                                   // warn-once when usage files never appear
+
+/* Load hermes-bridge/.env without a dependency. process.env (PM2 ecosystem)
+ * always wins — the file only fills gaps. Secrets live here, NOT in the
+ * git-tracked ecosystem.config.cjs. */
+function loadEnvFile() {
+  const f = path.join(path.dirname(new URL(import.meta.url).pathname), ".env");
+  let raw; try { raw = fs.readFileSync(f, "utf8"); } catch { return; }
+  for (const line of raw.split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
+    if (!m) continue;
+    const v = m[2].trim().replace(/^["']|["']$/g, "");
+    if (!(m[1] in process.env)) process.env[m[1]] = v;
+  }
+}
+loadEnvFile();
 
 const DB_URL = process.env.DATABASE_URL || "";
 if (!DB_URL) { console.error("DATABASE_URL is required (use the direct postgres:// URL, not a prisma:// Accelerate URL)"); process.exit(1); }
@@ -445,7 +463,78 @@ async function sweepStale() {
     log("swept stale request:", r.id, r.title);
     await emit("run", `Swept: ${r.title}`, { level: "down", meta: { requestId: r.id, reason: "stale" } });
   }
-  return dead.length + timedOut.length;
+
+  /* (c) EXPIRED — an approval nobody answered inside the TTL. A solo
+   * operator's queue must self-clean or it becomes guilt (Fable §4.4).
+   * Terminal: the PATCH route's 409-guard already refuses to decide it,
+   * and the UI offers "Chạy lại" instead. */
+  const { rows: expired } = await q(
+    `UPDATE "AgentRequest"
+        SET status='expired',
+            error=COALESCE(NULLIF(error,''), 'expired: awaiting approval >' || $1 || 'h'),
+            "finishedAt"=now(), "updatedAt"=now()
+      WHERE status='awaiting_approval'
+        AND "createdAt" < now() - make_interval(hours => $1)
+      RETURNING id, title`,
+    [APPROVAL_TTL_H]
+  );
+  for (const r of expired) {
+    log("expired approval:", r.id, r.title);
+    await emit("run", `Expired: ${r.title}`, { level: "warn", meta: { requestId: r.id, reason: "expired" } });
+  }
+
+  return dead.length + timedOut.length + expired.length;
+}
+
+/**
+ * Push a Telegram alert the moment a request enters awaiting_approval.
+ *
+ * Claim-then-send (D15): the CTE stamps notifiedAt inside the same statement
+ * that selects the rows, under FOR UPDATE SKIP LOCKED — so two bridge
+ * instances can never both alert on one row. If the send fails we clear
+ * notifiedAt again, so the next tick retries; only a hard kill inside that
+ * ~200ms window loses an alert, and /approvals still shows the row.
+ *
+ * Batched at NOTIFY_BATCH per tick so a backlog can't trip Telegram's rate
+ * limit — the remainder goes out on the following ticks.
+ */
+async function notifyPending() {
+  if (!telegramEnabled()) return 0;
+  const { rows } = await q(
+    `WITH claimed AS (
+       UPDATE "AgentRequest" SET "notifiedAt" = now()
+        WHERE id IN (
+          SELECT id FROM "AgentRequest"
+           WHERE status = 'awaiting_approval' AND "notifiedAt" IS NULL
+           ORDER BY "createdAt" ASC
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED
+        )
+       RETURNING id, title, kind, profile, "flagReason"
+     )
+     SELECT c.*, cl.slug AS "clientSlug", cl.name AS "clientName"
+       FROM claimed c
+       LEFT JOIN LATERAL (
+         SELECT slug, name FROM "Client"
+          WHERE "hermesProfile" = c.profile OR slug = c.profile
+          ORDER BY ("hermesProfile" = c.profile) DESC
+          LIMIT 1
+       ) cl ON true`,
+    [NOTIFY_BATCH]
+  );
+
+  let sent = 0;
+  for (const r of rows) {
+    const ok = await sendMessage(approvalMessage({
+      clientName: r.clientName, clientSlug: r.clientSlug,
+      title: r.title, kind: r.kind, flagReason: r.flagReason,
+    }));
+    if (ok) { sent++; continue; }
+    // Un-claim so the next tick retries.
+    await q(`UPDATE "AgentRequest" SET "notifiedAt" = NULL WHERE id = $1`, [r.id]);
+  }
+  if (sent) log(`telegram: notified ${sent} approval${sent > 1 ? "s" : ""}`);
+  return sent;
 }
 
 /**
@@ -460,7 +549,9 @@ async function heartbeat() {
        COUNT(*) FILTER (WHERE status = 'running')               AS running,
        COUNT(*) FILTER (WHERE status = 'awaiting_approval')     AS awaiting,
        COUNT(*) FILTER (WHERE status = 'failed'
-                          AND "createdAt" > now() - interval '24 hours') AS failed24h
+                          AND "createdAt" > now() - interval '24 hours') AS failed24h,
+       COUNT(*) FILTER (WHERE status = 'expired'
+                          AND "createdAt" > now() - interval '24 hours') AS expired24h
      FROM "AgentRequest"`
   );
   const c = rows[0] || {};
@@ -471,10 +562,11 @@ async function heartbeat() {
     instance: INSTANCE,
     board: BOARD,
     bootedAt: BOOT_ISO,
-    queued:    Number(c.queued    || 0),
-    running:   Number(c.running   || 0),
-    awaiting:  Number(c.awaiting  || 0),
-    failed24h: Number(c.failed24h || 0),
+    queued:     Number(c.queued     || 0),
+    running:    Number(c.running    || 0),
+    awaiting:   Number(c.awaiting   || 0),
+    failed24h:  Number(c.failed24h  || 0),
+    expired24h: Number(c.expired24h || 0),
   });
 }
 
@@ -492,11 +584,18 @@ async function mirrorTick() {
 
 async function main() {
   log(`hermes-bridge up · instance=${INSTANCE} · board=${BOARD} · poll=${POLL_MS}ms · mirror=${MIRROR_MS}ms · usageDir=${USAGE_DIR}`);
+  log(telegramEnabled()
+    ? `telegram: enabled (chat=${String(process.env.TELEGRAM_CHAT_ID).slice(0, 4)}…, base=${baseUrl()})`
+    : "telegram: disabled (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset) — approvals will not be pushed");
   await emit("status", "Bridge connected", { level: "up" });
   await mirrorTick();
   setInterval(() => mirrorTick().catch((e) => log("mirror loop", e.message)), MIRROR_MS);
   // queue loop
-  const tick = async () => { try { await processQueue(); } catch (e) { log("queue loop", e.message); } finally { setTimeout(tick, POLL_MS); } };
+  const tick = async () => {
+    try { await processQueue(); } catch (e) { log("queue loop", e.message); }
+    try { await notifyPending(); } catch (e) { log("notify loop", e.message); }
+    finally { setTimeout(tick, POLL_MS); }
+  };
   tick();
 }
 main().catch((e) => { console.error("fatal", e); process.exit(1); });

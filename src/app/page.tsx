@@ -150,7 +150,7 @@ function ActivityPanel() {
 function StatusStrip({ c }: { c: Cockpit | null }) {
   const t = c?.tiles;
   const tiles = [
-    { label: "Pending approvals", value: t?.pendingApprovals ?? 0, href: "/hermes",
+    { label: "Pending approvals", value: t?.pendingApprovals ?? 0, href: "/approvals",
       color: (t?.pendingApprovals ?? 0) > 0 ? "var(--hq-warn)" : "var(--hq-text)" },
     { label: "Active agent runs", value: t?.activeRuns ?? 0, href: "/agents",
       color: (t?.activeRuns ?? 0) > 0 ? "var(--accent)" : "var(--hq-text)" },

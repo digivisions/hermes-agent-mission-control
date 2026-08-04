@@ -3,17 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, ChevronRight, Gauge } from "lucide-react";
 import { Panel, SectionHeader, Pill, EmptyState, Eyebrow } from "@/components/ui/kit";
+import { type RequestStatus as RunStatus, type Tone, STATUS_TONE, STATUS_LABEL } from "@/lib/requests";
 
 // ── Types ─────────────────────────────────────────────────
-type RunStatus =
-  | "queued"
-  | "awaiting_approval"
-  | "approved"
-  | "running"
-  | "done"
-  | "failed"
-  | "rejected";
-
 interface Req {
   id: string;
   origin: string;
@@ -107,25 +99,6 @@ function usePrefersReducedMotion(): boolean {
 }
 
 // ── Status → tone / dot ───────────────────────────────────
-type Tone = "neutral" | "up" | "down" | "warn" | "accent";
-const STATUS_TONE: Record<RunStatus, Tone> = {
-  queued: "neutral",
-  awaiting_approval: "warn",
-  approved: "accent",
-  running: "accent",
-  done: "up",
-  failed: "down",
-  rejected: "neutral",
-};
-const STATUS_LABEL: Record<RunStatus, string> = {
-  queued: "Queued",
-  awaiting_approval: "Awaiting approval",
-  approved: "Approved",
-  running: "Running",
-  done: "Done",
-  failed: "Failed",
-  rejected: "Rejected",
-};
 function toneVar(t: Tone): string {
   return t === "neutral" ? "var(--text-3)" : `var(--${t})`;
 }

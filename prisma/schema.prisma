@@ -456,10 +456,11 @@ model AgentRequest {
   prompt        String?
   profile       String? // Hermes profile to run with (e.g. "klaily"); null = default profile
   sideEffecting Boolean   @default(false)
-  status        String    @default("queued") // queued | awaiting_approval | approved | running | done | failed | rejected
+  status        String    @default("queued") // queued | awaiting_approval | approved | running | done | failed | rejected | expired
   result        String?
   error         String?
   hermesTaskId  String?
+  flagReason    String? // why this needs approval: matched rule name, or null when the operator chose ⚡ manually
   decidedAt     DateTime?
   startedAt     DateTime?
   finishedAt    DateTime?
@@ -477,10 +478,14 @@ model AgentRequest {
   claimedAt DateTime? // when a bridge instance took ownership
   claimedBy String? // "<hostname>:<pid>" of the owning bridge instance
 
+  // ── Push notification (Telegram; hermes-bridge/telegram.mjs) ──
+  notifiedAt DateTime? // claimed-then-sent; NULL = never pushed. Rolled back to NULL if the send fails.
+
   @@index([status])
   @@index([createdAt])
   @@index([profile, createdAt]) // per-client run history (SPEC B right rail)
   @@index([status, claimedAt]) // stale sweep
+  @@index([status, notifiedAt]) // notifier claim scan
 }
 
 // ─── Per-client chat (Phase 1) ───────────────────────────────────

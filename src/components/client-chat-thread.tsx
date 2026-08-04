@@ -5,6 +5,8 @@ import { Send, Loader2, User, Bot, Clock, CircleAlert } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { EmptyState, Button } from "@/components/ui/kit";
+import { POLLING, PENDING } from "@/lib/requests";
+import { ApprovalCard, type Req } from "@/components/approval-card";
 
 const markdownComponents: Components = {
   p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
@@ -74,10 +76,6 @@ export interface ChatMsg {
   createdAt: string;
 }
 
-// A request in any of these states means work is still in flight: the thread
-// keeps polling and the typing indicator stays up.
-const PENDING = new Set(["queued", "approved", "running", "awaiting_approval"]);
-
 // NB: var(--hq-accent) does NOT exist in globals.css. Use var(--accent).
 const CHIP: Record<string, { label: string; tone: string }> = {
   queued:            { label: "Queued",         tone: "var(--text-3)" },
@@ -86,6 +84,7 @@ const CHIP: Record<string, { label: string; tone: string }> = {
   running:           { label: "Running",        tone: "var(--accent)" },
   failed:            { label: "Failed",         tone: "var(--down)"   },
   rejected:          { label: "Rejected",       tone: "var(--text-3)" },
+  expired:           { label: "Expired",        tone: "var(--text-3)" },
 };
 
 function timeLabel(d: string): string {
@@ -140,30 +139,39 @@ export function ClientChatThread({
   const [loaded, setLoaded]     = useState(false);
   const [input, setInput]       = useState("");
   const [sending, setSending]   = useState(false);
-  const [needsApproval, setNeedsApproval] = useState(false);
+  const [requests, setRequests] = useState<Record<string, Req>>({});
+  const [estCost, setEstCost]   = useState<number | null>(null);
+  const [mode, setMode] = useState<"chat" | "action">("chat");
   const [now, setNow]           = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     try {
       const r = await fetch(`/api/clients/${client}/chat`);
-      if (r.ok) setMessages((await r.json()).messages ?? []);
+      if (r.ok) {
+        const data = await r.json();
+        setMessages(data.messages ?? []);
+        setRequests(data.requests ?? {});
+        setEstCost(data.estCostUsd ?? null);
+      }
     } catch { /* ignore — next poll retries */ }
     setLoaded(true);
   }, [client]);
 
   useEffect(() => { setLoaded(false); setMessages([]); load(); }, [client, load]);
 
-  const hasPending = messages.some((m) => m.requestStatus && PENDING.has(m.requestStatus));
+  const hasLive    = messages.some((m) => m.requestStatus && POLLING.has(m.requestStatus));
+  const hasWorking = messages.some((m) => m.requestStatus && PENDING.has(m.requestStatus));
+  const hasAwaiting = messages.some((m) => m.requestStatus === "awaiting_approval");
   const lastIsUnansweredUser = messages.length > 0 && messages[messages.length - 1].role === "user";
-  const showTyping = hasPending || lastIsUnansweredUser;
+  const showTyping = hasWorking || (lastIsUnansweredUser && !hasAwaiting);
 
   // 3s poll while work is in flight. Fine at one user; SSE is a Phase-3 call.
   useEffect(() => {
-    if (!showTyping) return;
+    if (!hasLive) return;
     const iv = setInterval(() => { load(); setNow(Date.now()); }, 3000);
     return () => clearInterval(iv);
-  }, [showTyping, load]);
+  }, [hasLive, load]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -178,9 +186,9 @@ export function ClientChatThread({
       const r = await fetch(`/api/clients/${client}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, sideEffecting: needsApproval }),
+        body: JSON.stringify({ message: text, sideEffecting: mode === "action" }),
       });
-      if (r.ok) await load(); else setInput(text);
+      if (r.ok) { await load(); setMode("chat"); } else setInput(text);
     } catch { setInput(text); }
     finally { setSending(false); }
   };
@@ -194,7 +202,30 @@ export function ClientChatThread({
           <EmptyState icon={<Bot className="w-6 h-6" />} title="Chưa có tin nhắn — gửi tin nhắn đầu tiên để bắt đầu" />
         ) : (
           <div className="flex flex-col gap-4">
-            {messages.map((m) => <ChatBubble key={m.id} message={m} now={now} />)}
+            {messages.map((m) => {
+              const r = m.requestId ? requests[m.requestId] : undefined;
+              const showCard = m.role === "user" && r?.sideEffecting;   // ordinary chat gets no card
+              return (
+                <div key={m.id} className="flex flex-col gap-2">
+                  <ChatBubble message={m} now={now} suppressChip={!!showCard} />
+                  {showCard && (
+                    <div className="self-end w-full max-w-[85%]">
+                      <ApprovalCard
+                        req={r!} variant="rich" estCostUsd={estCost} modelHint={null}
+                        onAction={load}
+                        onRerun={async () => {
+                          await fetch(`/api/hermes/requests/${r!.id}`, {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "rerun" }),
+                          });
+                          await load();
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {showTyping && <TypingBubble />}
           </div>
         )}
@@ -206,42 +237,42 @@ export function ClientChatThread({
             {disabledReason ?? "No Hermes profile for this client yet."}
           </div>
         ) : (
-          <div className="flex items-end gap-2.5">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
-              placeholder="Nhắn tin cho Hermes…"
-              rows={1}
-              className="flex-1 min-w-0 bg-transparent text-[14px] text-[var(--text)] placeholder:text-[var(--text-3)] px-3.5 py-2.5 rounded-[10px] border border-[var(--line)] focus:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] outline-none transition-colors resize-none"
-            />
-            {/* Manual override until agent-side detection lands (Fable §4.1) —
-                de-emphasised so the default path stays one tap. */}
-            <button
-              type="button"
-              onClick={() => setNeedsApproval((v) => !v)}
-              title="Khi bật, tin nhắn sẽ tạo một hành động cần duyệt trước khi chạy"
-              className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-[10px] text-[11.5px] font-medium border transition-colors shrink-0"
-              style={needsApproval
-                ? { color: "var(--accent)", borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" }
-                : { color: "var(--text-3)", borderColor: "var(--line)" }}
-            >
-              <span className="w-3 h-3 rounded-[3px] border shrink-0"
-                style={{ borderColor: needsApproval ? "var(--accent)" : "var(--text-3)",
-                         background:  needsApproval ? "var(--accent)" : "transparent" }} />
-              Cần duyệt
-            </button>
-            <Button variant="primary" onClick={submit} disabled={sending || !input.trim()}>
-              <Send className="w-3.5 h-3.5" /> Send
-            </Button>
-          </div>
+          <>
+            <div className="flex items-center gap-1 mb-2.5">
+              {([
+                { k: "chat"  as const, label: "💬 Trò chuyện", hint: "Hermes trả lời ngay" },
+                { k: "action" as const, label: "⚡ Hành động",  hint: "Tạo yêu cầu cần bạn duyệt trước khi chạy" },
+              ]).map((o) => (
+                <button key={o.k} type="button" onClick={() => setMode(o.k)} title={o.hint}
+                  className="px-2.5 py-1 rounded-full text-[11.5px] font-medium border transition-colors"
+                  style={mode === o.k
+                    ? { color: "var(--accent)", borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" }
+                    : { color: "var(--text-3)", borderColor: "var(--line)" }}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-end gap-2.5">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+                placeholder={mode === "action" ? "Mô tả hành động cần Hermes thực hiện…" : "Nhắn tin cho Hermes…"}
+                rows={1}
+                className="flex-1 min-w-0 bg-transparent text-[14px] text-[var(--text)] placeholder:text-[var(--text-3)] px-3.5 py-2.5 rounded-[10px] border border-[var(--line)] focus:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] outline-none transition-colors resize-none"
+              />
+              <Button variant="primary" onClick={submit} disabled={sending || !input.trim()}>
+                <Send className="w-3.5 h-3.5" /> Send
+              </Button>
+            </div>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function ChatBubble({ message, now }: { message: ChatMsg; now: number }) {
+function ChatBubble({ message, now, suppressChip }: { message: ChatMsg; now: number; suppressChip?: boolean }) {
   const isUser = message.role === "user";
   return (
     <div className={`flex items-start gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -279,7 +310,7 @@ function ChatBubble({ message, now }: { message: ChatMsg; now: number }) {
           <span className="num text-[10.5px] text-[var(--text-3)]">
             {timeLabel(message.createdAt)}
           </span>
-          <StatusChip msg={message} now={now} />
+          {!suppressChip && <StatusChip msg={message} now={now} />}
         </div>
       </div>
     </div>

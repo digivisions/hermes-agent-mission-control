@@ -6,17 +6,14 @@ import { Panel, Pill } from "@/components/ui/kit";
 
 // ── Types ─────────────────────────────────────────────────
 export interface Req {
-  id: string;
-  origin: string;
-  kind: string;
-  title: string;
-  prompt: string | null;
-  sideEffecting: boolean;
-  status: string;
-  result: string | null;
-  error: string | null;
+  id: string; origin: string; kind: string; title: string; prompt: string | null;
+  sideEffecting: boolean; status: string; result: string | null; error: string | null;
   createdAt: string;
+  flagReason?: string | null;
+  model?: string | null; costUsd?: number | null; durationMs?: number | null;
+  decidedAt?: string | null; startedAt?: string | null; finishedAt?: string | null;
 }
+export interface ClientBadge { slug: string; name: string; accent?: string | null }
 
 // ── Helpers ───────────────────────────────────────────────
 export function timeAgo(d: string | null): string {
@@ -33,20 +30,88 @@ export function timeAgo(d: string | null): string {
   return `${days}d ago`;
 }
 
+function dur(ms: number | null | undefined) {
+  if (ms == null) return null;
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+// ── Receipt (rich only) ──────────────────────────────────────
+function Receipt({ req, onRerun }: { req: Req; onRerun?: () => void }) {
+  const rerunBtn = onRerun && (
+    <button
+      type="button"
+      onClick={onRerun}
+      className="font-medium underline underline-offset-2 hover:text-[var(--text-2)]"
+    >
+      Chạy lại
+    </button>
+  );
+
+  if (req.status === "approved" || req.status === "running") {
+    return (
+      <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-3)]">
+        ⏳ Đã duyệt · đang chạy…
+      </div>
+    );
+  }
+  if (req.status === "done") {
+    const d = dur(req.durationMs);
+    return (
+      <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-3)]">
+        ✅ Đã duyệt{d && ` · chạy ${d}`}
+        {req.costUsd != null && ` · $${req.costUsd.toFixed(4)}`}
+      </div>
+    );
+  }
+  if (req.status === "failed") {
+    const err = req.error && req.error.length > 60 ? `${req.error.slice(0, 60)}…` : req.error;
+    return (
+      <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-3)]">
+        ⚠️ Chạy lỗi{err ? ` · ${err}` : ""} {rerunBtn}
+      </div>
+    );
+  }
+  if (req.status === "rejected") {
+    return (
+      <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-3)]">
+        ✕ Đã từ chối {rerunBtn}
+      </div>
+    );
+  }
+  if (req.status === "expired") {
+    return (
+      <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-3)]">
+        ⏰ Hết hạn sau 24h · chưa được duyệt {rerunBtn}
+      </div>
+    );
+  }
+  // queued: an unapproved queued row has no approval story
+  return null;
+}
+
 // ── Card ──────────────────────────────────────────────────
 export function ApprovalCard({
-  req,
-  compact,
-  onAction,
+  req, variant = "compact", estCostUsd = null, modelHint = null,
+  client = null, onAction, onRerun,
 }: {
   req: Req;
-  compact: boolean;
+  variant?: "compact" | "rich";
+  estCostUsd?: number | null;   // rich only (D7)
+  modelHint?: string | null;    // Client.model, when req.model is not yet resolved
+  client?: ClientBadge | null;  // global list badge + deep link (D8)
   onAction: () => void;
+  onRerun?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(req.title);
   const [draftPrompt, setDraftPrompt] = useState(req.prompt ?? "");
+
+  if (req.status !== "awaiting_approval") {
+    if (variant === "rich") return <Receipt req={req} onRerun={onRerun} />;
+    return null;
+  }
 
   const patch = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -64,14 +129,25 @@ export function ApprovalCard({
     }
   };
 
-  const pad = compact ? "p-4" : "p-5";
+  const pad = variant === "compact" ? "p-4" : "p-5";
 
   return (
     <Panel className={`${pad} ${busy ? "opacity-50 pointer-events-none" : ""}`}>
       <div className="flex items-start justify-between gap-3 mb-2.5">
         <div className="flex items-center gap-2 flex-wrap">
           <Pill tone="neutral">{req.kind}</Pill>
-          {req.sideEffecting && <Pill tone="warn">side-effecting</Pill>}
+          {client && (
+            <Pill tone="accent">
+              <a href={`/clients/${client.slug}`}>{client.name}</a>
+            </Pill>
+          )}
+          {req.flagReason ? (
+            <span title="Hermes flagged this automatically">
+              <Pill tone="warn">⚡ {req.flagReason}</Pill>
+            </span>
+          ) : (
+            req.sideEffecting && <Pill tone="warn">⚡ Hành động</Pill>
+          )}
         </div>
         <span className="num text-[10.5px] text-[var(--text-3)] shrink-0 mt-1">
           {timeAgo(req.createdAt)}
@@ -88,7 +164,7 @@ export function ApprovalCard({
           <textarea
             value={draftPrompt}
             onChange={(e) => setDraftPrompt(e.target.value)}
-            rows={3}
+            rows={variant === "rich" ? 5 : 3}
             className="w-full bg-transparent text-[13px] text-[var(--text-2)] px-3 py-2 rounded-[8px] border border-[var(--line)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] resize-y"
           />
         </div>
@@ -97,10 +173,29 @@ export function ApprovalCard({
           <h3 className="text-[15px] font-medium text-[var(--text)] leading-snug">
             {req.title}
           </h3>
-          {req.prompt && (
-            <p className="mt-1.5 text-[13px] text-[var(--text-2)] leading-snug line-clamp-2">
-              {req.prompt}
-            </p>
+          {variant === "rich" ? (
+            req.prompt && (
+              <pre className="mt-2.5 rounded-[8px] p-3 text-[12px] overflow-x-auto whitespace-pre-wrap break-words"
+                   style={{ background: "var(--surface-1)", border: "1px solid var(--line)" }}>
+                {req.prompt ?? req.title}
+              </pre>
+            )
+          ) : (
+            req.prompt && (
+              <p className="mt-1.5 text-[13px] text-[var(--text-2)] leading-snug line-clamp-2">
+                {req.prompt}
+              </p>
+            )
+          )}
+          {variant === "rich" && (
+            <div className="num text-[10.5px] text-[var(--text-3)] mt-2 flex flex-wrap gap-x-2.5">
+              {(req.model ?? modelHint) && <span>{req.model ?? modelHint}</span>}
+              {estCostUsd != null && (
+                <span title="Median cost of this client's last 20 completed runs">
+                  ~${estCostUsd.toFixed(4)} · ước tính
+                </span>
+              )}
+            </div>
           )}
         </>
       )}
