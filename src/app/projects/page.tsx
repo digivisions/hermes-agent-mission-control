@@ -11,12 +11,14 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Panel, Pill, Button, EmptyState } from "@/components/ui/kit";
 import { ProjectEditor, type ProjectCardLike } from "@/components/project-editor";
+import type { DocRef } from "@/components/documents-field";
 
 interface Project {
   slug: string; name: string; type: string; status: string; priority: string;
   sortOrder: number; tags: string[]; overview: string | null;
   nextActions: string[]; waitingOn: string[]; location: string | null;
   accent: string | null; description: string | null; contextNotes: string | null;
+  documents: DocRef[] | null;
   createdAt: string; updatedAt: string;
 }
 
@@ -90,6 +92,9 @@ function SortableProject({ id, project, onEdit }: { id: string; project: Project
             <Pill className="!text-[var(--text-3)]">
               <FileText className="w-3 h-3" /> context
             </Pill>
+          )}
+          {project.documents && project.documents.length > 0 && (
+            <Pill className="!text-[var(--text-3)]">📎 {project.documents.length} hồ sơ</Pill>
           )}
         </div>
 

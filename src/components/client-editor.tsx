@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Modal, Field, TextInput, TextArea, Select, Button } from "@/components/ui/kit";
 import { CLIENT_STATUSES, CLIENT_TYPES } from "@/lib/registry";
+import { DocumentsField, type DocRef } from "@/components/documents-field";
 
 export interface ClientCardLike {
   slug: string;
@@ -12,6 +13,7 @@ export interface ClientCardLike {
   accent: string | null;
   description: string | null;
   contextNotes?: string | null;
+  documents?: DocRef[] | null;
 }
 
 function slugify(s: string) {
@@ -36,6 +38,7 @@ export function ClientEditor({ mode, initial, onClose, onSaved }: {
   const [accent, setAccent] = useState(initial?.accent ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [contextNotes, setContextNotes] = useState(initial?.contextNotes ?? "");
+  const [documents, setDocuments] = useState<DocRef[]>(initial?.documents ?? []);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -48,7 +51,7 @@ export function ClientEditor({ mode, initial, onClose, onSaved }: {
     setSaving(true);
     setErrors({});
     try {
-      const body = { name, slug, type, status, accent: accent || null, description: description || null, contextNotes: contextNotes || null };
+      const body = { name, slug, type, status, accent: accent || null, description: description || null, contextNotes: contextNotes || null, documents };
       const res = mode === "create"
         ? await fetch("/api/clients", {
             method: "POST",
@@ -138,6 +141,7 @@ export function ClientEditor({ mode, initial, onClose, onSaved }: {
       >
         <TextArea rows={10} value={contextNotes} onChange={(e) => setContextNotes(e.target.value)} />
       </Field>
+      <DocumentsField value={documents} onChange={setDocuments} />
     </Modal>
   );
 }

@@ -46,3 +46,31 @@ export function normList(v: unknown): string[] {
 export function badRequest(errors: Fail[]) {
   return Response.json({ error: "invalid", errors }, { status: 400 });
 }
+
+export type DocRef = { title: string; url?: string; note?: string };
+
+/** A link or a local/network file path — not an arbitrary string, since this
+ *  is a reference to an external record, not free text. */
+const DOC_URL_RE = /^(https?:\/\/|\/|[a-zA-Z]:[\\/]|~\/|\.\/|\.\.\/)/;
+
+/** Validates the `documents` field on Client/Project PATCH bodies:
+ *  [{ title, url?, note? }]. Returns null (clears the column) for null/undefined
+ *  input, or a Fail on the first invalid entry. */
+export function normDocuments(v: unknown): { value: DocRef[] | null; error?: Fail } {
+  if (v === null || v === undefined) return { value: null };
+  if (!Array.isArray(v)) return { value: null, error: { field: "documents", message: "must be an array" } };
+
+  const out: DocRef[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") return { value: null, error: { field: "documents", message: "each entry must be an object" } };
+    const item = raw as Record<string, unknown>;
+    const title = normText(item.title);
+    if (!title) return { value: null, error: { field: "documents", message: "each entry requires a title" } };
+    const url = normText(item.url);
+    if (url && !DOC_URL_RE.test(url))
+      return { value: null, error: { field: "documents", message: "url must start with http(s)://, /, or a file path" } };
+    const note = normText(item.note);
+    out.push({ title, ...(url ? { url } : {}), ...(note ? { note } : {}) });
+  }
+  return { value: out };
+}

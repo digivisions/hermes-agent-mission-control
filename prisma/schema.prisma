@@ -564,6 +564,7 @@ model Client {
   accent        String? // hex, for the client index card chip
   description   String? // one-line blurb on the index card
   contextNotes  String?  @db.Text // free-form markdown: briefs, credentials-locations, links, standing instructions
+  documents     Json? // [{ title, url, note? }] — references to records (Drive/OneDrive links, file paths)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -593,6 +594,7 @@ model Project {
   accent       String? // hex, for the card chip
   description  String? // one-line blurb (short; `overview` is the long form)
   contextNotes String?  @db.Text // free-form markdown, same contract as Client.contextNotes
+  documents    Json? // [{ title, url, note? }] — references to records (Drive/OneDrive links, file paths)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

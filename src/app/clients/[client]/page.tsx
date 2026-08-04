@@ -7,11 +7,12 @@ import { ClientChatThread } from "@/components/client-chat-thread";
 import { ApprovalCard, timeAgo, type Req } from "@/components/approval-card";
 import { Markdown } from "@/components/markdown";
 import { ClientEditor } from "@/components/client-editor";
+import type { DocRef } from "@/components/documents-field";
 
 interface ClientRow {
   slug: string; name: string; type: string; hermesProfile: string | null;
   model: string; status: string; accent: string | null; description: string | null;
-  contextNotes: string | null;
+  contextNotes: string | null; documents: DocRef[] | null;
 }
 interface Run {
   id: string; kind: string; title: string; status: string; model: string | null;
@@ -167,6 +168,30 @@ export default function ClientWorkspace({ params }: { params: Promise<{ client: 
               </button>
             )}
           </div>
+
+          {/* Documents: reference links only — no upload/storage yet */}
+          {c?.documents && c.documents.length > 0 && (
+            <div>
+              <SectionHeader label="Documents" />
+              <Panel className="p-4">
+                <div className="flex flex-col gap-2">
+                  {c.documents.map((d, i) => (
+                    <div key={i} className="text-[12.5px] leading-snug">
+                      {d.url ? (
+                        <a href={d.url} target="_blank" rel="noreferrer"
+                          className="text-[var(--accent)] hover:underline break-words">
+                          {d.title}
+                        </a>
+                      ) : (
+                        <span className="text-[var(--text-2)]">{d.title}</span>
+                      )}
+                      {d.note && <div className="text-[11px] text-[var(--text-3)] mt-0.5">{d.note}</div>}
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+          )}
 
           {/* 3 — Tasks: hidden entirely when the board is empty */}
           {(data?.tasks.length ?? 0) > 0 && (

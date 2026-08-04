@@ -7,6 +7,7 @@ import { Sparkline } from "@/components/sparkline";
 import { timeAgo } from "@/components/approval-card";
 import { plainPreview } from "@/components/markdown";
 import { ClientEditor } from "@/components/client-editor";
+import type { DocRef } from "@/components/documents-field";
 
 interface KlailyData {
   month: string; revenue: number | null; orders: number | null; note: string;
@@ -23,6 +24,7 @@ interface ClientCard {
   accent: string | null;
   description: string | null;
   contextNotes: string | null;
+  documents: DocRef[] | null;
   pendingApprovals: number;
   lastMessage: { role: string; snippet: string; createdAt: string } | null;
   sparkline: number[];
@@ -101,6 +103,9 @@ export default function ClientsPage() {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {c.pendingApprovals > 0 && <Pill tone="warn">{c.pendingApprovals} pending</Pill>}
+                  {c.documents && c.documents.length > 0 && (
+                    <Pill tone="neutral">📎 {c.documents.length} hồ sơ</Pill>
+                  )}
                   <Pill tone={clientStatusTone[c.status] ?? "neutral"}>{c.status}</Pill>
                   <button
                     aria-label={`Edit ${c.name}`}

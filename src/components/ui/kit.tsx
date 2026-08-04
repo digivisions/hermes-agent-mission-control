@@ -7,6 +7,7 @@
    ─────────────────────────────────────────────────────────── */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 
 /* ── motion: count-up (first paint only, reduced-motion aware) ── */
@@ -251,8 +252,8 @@ export function Modal({
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [open, onClose]);
 
-  if (!open) return null;
-  return (
+  if (!open || typeof document === "undefined") return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
       onClick={onClose}
@@ -281,7 +282,8 @@ export function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

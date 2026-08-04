@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   CLIENT_STATUSES, CLIENT_TYPES, HEX_RE,
-  pick, normText, badRequest, type Fail,
+  pick, normText, normDocuments, badRequest, type Fail,
 } from "@/lib/registry";
 
 /**
@@ -45,7 +45,7 @@ export async function GET(
 }
 
 const CLIENT_PATCHABLE = [
-  "name", "type", "status", "description", "accent", "contextNotes", "hermesProfile", "model",
+  "name", "type", "status", "description", "accent", "contextNotes", "hermesProfile", "model", "documents",
 ] as const;
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ client: string }> }) {
@@ -64,6 +64,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
   if ("accent" in patch && normText(patch.accent) && !HEX_RE.test(normText(patch.accent)!))
     errors.push({ field: "accent", message: "hex colour, e.g. #34d399" });
   if ("model" in patch && !normText(patch.model)) errors.push({ field: "model", message: "cannot be empty" });
+  const docs = "documents" in patch ? normDocuments(patch.documents) : null;
+  if (docs?.error) errors.push(docs.error);
   if (errors.length) return badRequest(errors);
 
   // slug is immutable: it is ChatMessage.client and AgentRequest.profile.
@@ -77,6 +79,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
   if ("accent" in patch)        data.accent        = normText(patch.accent);
   if ("contextNotes" in patch)  data.contextNotes  = normText(patch.contextNotes);
   if ("hermesProfile" in patch) data.hermesProfile = normText(patch.hermesProfile);
+  if ("documents" in patch)     data.documents     = docs!.value;
 
   try {
     const client = await prisma.client.update({ where: { slug }, data });

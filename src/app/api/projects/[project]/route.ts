@@ -1,14 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import {
   PROJECT_STATUSES, PROJECT_TYPES, PRIORITIES, HEX_RE,
-  pick, normText, normList, badRequest, type Fail,
+  pick, normText, normList, normDocuments, badRequest, type Fail,
 } from "@/lib/registry";
 
 export const dynamic = "force-dynamic";
 
 const PROJECT_PATCHABLE = [
   "name", "type", "status", "priority", "tags", "overview", "nextActions",
-  "waitingOn", "location", "accent", "description", "contextNotes",
+  "waitingOn", "location", "accent", "description", "contextNotes", "documents",
 ] as const;
 
 export async function GET(_req: Request, { params }: { params: Promise<{ project: string }> }) {
@@ -34,6 +34,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ projec
     errors.push({ field: "type", message: `one of ${PROJECT_TYPES.join(", ")}` });
   if ("accent" in patch && normText(patch.accent) && !HEX_RE.test(normText(patch.accent)!))
     errors.push({ field: "accent", message: "hex colour, e.g. #60a5fa" });
+  const docs = "documents" in patch ? normDocuments(patch.documents) : null;
+  if (docs?.error) errors.push(docs.error);
   if (errors.length) return badRequest(errors);
 
   const data: Record<string, unknown> = {};
@@ -49,6 +51,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ projec
   if ("accent" in patch)       data.accent       = normText(patch.accent);
   if ("description" in patch)  data.description  = normText(patch.description);
   if ("contextNotes" in patch) data.contextNotes = normText(patch.contextNotes);
+  if ("documents" in patch)    data.documents    = docs!.value;
 
   try {
     const project = await prisma.project.update({ where: { slug }, data });

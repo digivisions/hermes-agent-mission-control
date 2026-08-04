@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Modal, Field, TextInput, TextArea, Select, Button } from "@/components/ui/kit";
 import { PROJECT_STATUSES, PROJECT_TYPES, PRIORITIES } from "@/lib/registry";
 import { Markdown } from "@/components/markdown";
+import { DocumentsField, type DocRef } from "@/components/documents-field";
 
 export interface ProjectCardLike {
   slug: string;
@@ -19,6 +20,7 @@ export interface ProjectCardLike {
   accent: string | null;
   description: string | null;
   contextNotes: string | null;
+  documents?: DocRef[] | null;
 }
 
 function slugify(s: string) {
@@ -49,6 +51,7 @@ export function ProjectEditor({ mode, initial, onClose, onSaved }: {
   const [nextActions, setNextActions] = useState((initial?.nextActions ?? []).join("\n"));
   const [waitingOn, setWaitingOn] = useState((initial?.waitingOn ?? []).join("\n"));
   const [contextNotes, setContextNotes] = useState(initial?.contextNotes ?? "");
+  const [documents, setDocuments] = useState<DocRef[]>(initial?.documents ?? []);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -67,6 +70,7 @@ export function ProjectEditor({ mode, initial, onClose, onSaved }: {
         tags, location: location || null, description: description || null,
         overview: overview || null, nextActions, waitingOn,
         contextNotes: contextNotes || null,
+        documents,
       };
       const res = mode === "create"
         ? await fetch("/api/projects", {
@@ -174,6 +178,7 @@ export function ProjectEditor({ mode, initial, onClose, onSaved }: {
       <Field label="Context notes" hint="Markdown">
         <TextArea rows={10} value={contextNotes} onChange={(e) => setContextNotes(e.target.value)} />
       </Field>
+      <DocumentsField value={documents} onChange={setDocuments} />
       {contextNotes && (
         <div className="rounded-[10px] p-3" style={{ background: "var(--surface-1)", border: "1px solid var(--line)" }}>
           <Markdown>{contextNotes}</Markdown>
