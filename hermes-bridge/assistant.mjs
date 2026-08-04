@@ -37,6 +37,14 @@ export const DEFAULT_CONFIG = {
   clients: {}, // v2 seam: { [slug]: { muted: false } }. Unused in v1.
 };
 
+/**
+ * "Is this asking for a report?" — anchored at the start so "viết báo cáo
+ * cho khách hàng vào file X" (an engineering task) is not swallowed.
+ * Twin: `REPORT_RE` in src/lib/assistant.ts, used by the client chat route.
+ * Used here by the Telegram inbound handler (F-8).
+ */
+export const REPORT_RE = /^\s*(báo\s*cáo|tình hình|summary|report|status)\b/i;
+
 const TIME_RE = /^\d{2}:\d{2}$/;
 
 function clampNum(v, def, lo, hi) {
@@ -430,15 +438,21 @@ ${JSON.stringify(ctx)}
 CTX`;
 }
 
-/** Scoped to one client; the operator's original question is appended after the guard. */
-export function REPORT_PROMPT(ctx, clientSlug, question) {
-  const client = (ctx.clients || []).find((c) => c.slug === clientSlug) || null;
+/**
+ * Scoped to one client; the operator's original question is appended after the
+ * guard. `key` is whatever the caller has — bridge.mjs passes `r.profile`,
+ * which equals the slug for today's clients but need not — so match on either
+ * and scope the decisions by the resolved slug.
+ */
+export function REPORT_PROMPT(ctx, key, question) {
+  const client = (ctx.clients || []).find((c) => c.slug === key || c.profile === key) || null;
+  const slug = client?.slug || key;
   const scoped = {
     generatedAt: ctx.generatedAt, ictTime: ctx.ictTime, slot: ctx.slot, windowH: ctx.windowH,
     client, bridge: ctx.bridge, infra: ctx.infra,
-    decisions: (ctx.decisions || []).filter((d) => d.id.endsWith(`:${clientSlug}`)),
+    decisions: (ctx.decisions || []).filter((d) => d.id.endsWith(`:${slug}`)),
   };
-  return `Bạn là Krisna — trợ lý điều hành của Andy tại Digital Visions. Trả lời câu hỏi của Andy về khách hàng "${clientSlug}" bằng tiếng Việt, dựa trên DỮ LIỆU bên dưới.
+  return `Bạn là Krisna — trợ lý điều hành của Andy tại Digital Visions. Trả lời câu hỏi của Andy về khách hàng "${slug}" bằng tiếng Việt, dựa trên DỮ LIỆU bên dưới.
 
 Quy tắc:
 - KHÔNG bịa số. Chỉ dùng con số có trong DỮ LIỆU. Không có dữ liệu thì nói rõ là chưa có dữ liệu.

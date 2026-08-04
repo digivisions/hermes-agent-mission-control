@@ -7,7 +7,8 @@ import {
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { HermesBriefing } from "@/components/hermes-briefing";
-import { Eyebrow, Panel, Pill, SectionHeader, EmptyState } from "@/components/ui/kit";
+import { AssistantPanel } from "@/components/assistant-panel";
+import { Eyebrow, Panel, Pill, SectionHeader } from "@/components/ui/kit";
 
 // ── Types ─────────────────────────────────────────────────
 interface Project {
@@ -273,17 +274,6 @@ function ThroughputChart({ data }: { data: Cockpit["throughput"] }) {
   );
 }
 
-/** Row 3 right. Phase 4 fills this; the empty state is the honest v1. */
-function DecisionItems() {
-  return (
-    <Panel className="p-6 h-full">
-      <SectionHeader label="Decisions" title="Needs your call" />
-      <EmptyState title="No decisions queued."
-        hint="Hermes will surface things needing your judgement here (Phase 4)." />
-    </Panel>
-  );
-}
-
 // ── Main ──────────────────────────────────────────────────
 export default function Dashboard() {
   const [time, setTime] = useState(new Date());
@@ -357,7 +347,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-stretch mb-6">
         <div className="xl:col-span-2 hq-rise" style={rise(6)}><HermesBriefing /></div>
-        <div className="xl:col-span-1 hq-rise" style={rise(7)}><DecisionItems /></div>
+        <div className="xl:col-span-1 hq-rise" style={rise(7)}><AssistantPanel /></div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-stretch">

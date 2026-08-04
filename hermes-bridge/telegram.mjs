@@ -45,6 +45,46 @@ export async function sendMessage(text, { chatId = CHAT(), silent = false } = {}
   }
 }
 
+/**
+ * Inbound, short-poll (Spec F, F-8 / F-D8). `getUpdates` needs no ingress at
+ * all — no public route accepting unauthenticated POSTs, no `setWebhook`
+ * deploy step — and keeps every line of bot code in this file. `timeout=0` is
+ * deliberate: a long poll would hold a connection across the 30s mirror tick.
+ *
+ * Never throws and never returns anything but an array; the caller runs
+ * inside the mirror tick and must not be able to die here.
+ *
+ * 409 means a webhook is registered — `getUpdates` and a webhook are mutually
+ * exclusive. Logged once by the caller, then inbound stays dark.
+ */
+let warned409 = false;
+export async function getUpdates(offset = 0) {
+  if (!telegramEnabled()) return [];
+  try {
+    const url = `https://api.telegram.org/bot${TOKEN()}/getUpdates`
+      + `?offset=${Number(offset) || 0}&timeout=0&limit=20`
+      + `&allowed_updates=${encodeURIComponent('["message"]')}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) {
+      if (res.status === 409) {
+        if (!warned409) {
+          warned409 = true;
+          console.log(new Date().toISOString(),
+            "telegram: getUpdates 409 — a webhook is registered; inbound disabled");
+        }
+        return [];
+      }
+      console.log(new Date().toISOString(), `telegram: getUpdates failed ${res.status}`);
+      return [];
+    }
+    const body = await res.json();
+    return Array.isArray(body?.result) ? body.result : [];
+  } catch (e) {
+    console.log(new Date().toISOString(), "telegram: getUpdates error", e.message);
+    return [];
+  }
+}
+
 const trunc = (s, n) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || "");
 
 /** The approval alert. Client · title · deep link into the thread. */

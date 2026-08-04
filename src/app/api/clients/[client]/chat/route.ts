@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { detectSideEffect } from "@/lib/requests";
+import { REPORT_RE } from "@/lib/assistant";
 
 export async function GET(
   _req: Request,
@@ -69,7 +70,11 @@ export async function POST(
   const body = await req.json().catch(() => null);
   const message = typeof body?.message === "string" ? body.message.trim() : "";
   const explicit = body?.sideEffecting === true;          // ⚡ Hành động mode
-  const detected = explicit ? null : detectSideEffect(message);   // escalate-only (D2)
+  // A report is a read-only summary of THIS client's 24h — never triaged (no LLM
+  // classification cost), never side-effecting, answered in-thread by the bridge
+  // (Spec F, F-7 step 4). ⚡ mode wins: the operator asked for an action explicitly.
+  const isReport = !explicit && REPORT_RE.test(message);
+  const detected = explicit || isReport ? null : detectSideEffect(message);   // escalate-only (D2)
   const sideEffecting = explicit || detected !== null;
   if (!message) {
     return NextResponse.json({ ok: false, error: "message is required" }, { status: 400 });
@@ -96,13 +101,16 @@ export async function POST(
   const now = new Date();
   const agentRequest = await prisma.agentRequest.create({
     data: {
-      kind: "chat",
+      kind: isReport ? "report" : "chat",
       title: message.length > 80 ? `${message.slice(0, 80)}…` : message,
       prompt: message,
       profile: registered.hermesProfile,
       sideEffecting,
       flagReason: detected,
       status: sideEffecting ? "awaiting_approval" : "queued",
+      // Belt-and-braces: triageBatch() only selects kind='chat', but the stamp
+      // documents intent — a report is classified by the regex, not by an LLM.
+      triagedAt: isReport ? now : undefined,
       createdAt: now,
       updatedAt: now,
     },

@@ -23,7 +23,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { telegramEnabled, sendMessage, approvalMessage, baseUrl } from "./telegram.mjs";
+import { telegramEnabled, sendMessage, approvalMessage, baseUrl, getUpdates } from "./telegram.mjs";
 import { ccEnabled, ccProbe, ccRun, formatCcResult, ccTarget } from "./claude-code.mjs";
 import { classify, briefToPrompt } from "./triage.mjs";
 import { collectInfra } from "./infra.mjs";
@@ -102,7 +102,6 @@ const ASSISTANT_TELEGRAM_INBOUND = process.env.ASSISTANT_TELEGRAM_INBOUND !== "0
 let ccOnline = false;
 let ccWarned = false;
 let ccOfflineSince = null;
-let ccNudgeSent = false;
 let triageStats = { classified: 0, exempt: 0, failed: 0, costUsd: 0, routes: { chat: 0, engineering: 0, design: 0, "infra-ops": 0 } };
 
 const DB_URL = process.env.DATABASE_URL || "";
@@ -819,22 +818,25 @@ async function ccReachabilityTick() {
 
   if (ccOnline && !was) {
     log(`cc: Mac reachable via ${ccTarget()} (runner ok)`);
-    ccWarned = false; ccOfflineSince = null; ccNudgeSent = false;
+    ccWarned = false; ccOfflineSince = null;
+    await writeState({ ccNudgeSentAt: null }); // F-5 rule 3 hardening: survives PM2 restart
   }
   if (!ccOnline && !ccWarned) {
     ccWarned = true;
     ccOfflineSince = ccOfflineSince ?? Date.now();
     log("cc: Mac unreachable — claude-code requests will hold (queued, not failed)");
   }
-  if (!ccOnline && ccOfflineSince && !ccNudgeSent &&
-      Date.now() - ccOfflineSince > CC_OFFLINE_NUDGE_MIN * 60000) {
-    const { rows } = await q(
-      `SELECT COUNT(*)::int AS n FROM "AgentRequest" WHERE status = 'queued' AND kind = 'claude-code'`
-    );
-    const n = rows[0]?.n || 0;
-    if (n > 0 && telegramEnabled()) {
-      const ok = await sendMessage(`${n} tác vụ Claude Code đang chờ máy Mac online`);
-      if (ok) ccNudgeSent = true; // one nudge; doesn't repeat until reconnect resets the flag
+  if (!ccOnline && ccOfflineSince && Date.now() - ccOfflineSince > CC_OFFLINE_NUDGE_MIN * 60000) {
+    const state = await readState();
+    if (!state.ccNudgeSentAt) {
+      const { rows } = await q(
+        `SELECT COUNT(*)::int AS n FROM "AgentRequest" WHERE status = 'queued' AND kind = 'claude-code'`
+      );
+      const n = rows[0]?.n || 0;
+      if (n > 0 && telegramEnabled()) {
+        const ok = await sendMessage(`${n} tác vụ Claude Code đang chờ máy Mac online`);
+        if (ok) await writeState({ ccNudgeSentAt: new Date().toISOString() }); // one nudge; doesn't repeat until reconnect resets the flag
+      }
     }
   }
 }
@@ -864,14 +866,198 @@ async function assistantTick() {
   if (!cfg.enabled) return;
   const state = await readState();
   const due = assistant.slotDue(cfg, state, Date.now());
-  if (!due) return;
-  await writeState({ lastDigest: { ...state.lastDigest, [due.slot]: due.ictDate } });  // stamp FIRST
-  if (due.late) { log(`assistant: skipping late ${due.slot} digest for ${due.ictDate}`); return; }
-  await q(`INSERT INTO "AgentRequest"(id,origin,kind,title,prompt,status,"createdAt","updatedAt")
-           VALUES ($1,'hermes','digest',$2,$3,'queued',now(),now())`,
-          [randomUUID(), `Krisna · tóm tắt ${due.slot === "morning" ? "sáng" : "tối"}`,
-           JSON.stringify({ slot: due.slot })]);
-  await emit("status", `Krisna: ${due.slot} digest queued`, { level: "info" });
+  if (due) {
+    await writeState({ lastDigest: { ...state.lastDigest, [due.slot]: due.ictDate } });  // stamp FIRST
+    if (due.late) {
+      log(`assistant: skipping late ${due.slot} digest for ${due.ictDate}`);
+    } else {
+      await q(`INSERT INTO "AgentRequest"(id,origin,kind,title,prompt,status,"createdAt","updatedAt")
+               VALUES ($1,'hermes','digest',$2,$3,'queued',now(),now())`,
+              [randomUUID(), `Krisna · tóm tắt ${due.slot === "morning" ? "sáng" : "tối"}`,
+               JSON.stringify({ slot: due.slot })]);
+      await emit("status", `Krisna: ${due.slot} digest queued`, { level: "info" });
+    }
+  }
+  await assistantNudges(cfg, state);
+  if (ASSISTANT_TELEGRAM_INBOUND) {
+    try { await assistantInboundTick(); } catch (e) { log("assistant inbound err", e.message); }
+  }
+}
+
+const UNKNOWN_REPLY_COOLDOWN_MS = 5 * 60_000;
+
+/**
+ * Telegram inbound (Spec F, F-8) — `getUpdates` short-poll, no webhook and
+ * therefore no new ingress (F-D8). The only action a message can trigger is
+ * generating a digest, which is read-only.
+ *
+ * Three rules that make this safe to run against an open bot:
+ *  1. Every message from a chat other than TELEGRAM_CHAT_ID is dropped
+ *     silently — no reply (which would confirm the bot exists) and no log
+ *     line carrying its text (an unknown sender's words must not land in
+ *     our logs).
+ *  2. `tgOffset` is persisted BEFORE acting. A crash mid-handling loses the
+ *     command; replaying it would enqueue a duplicate digest on every restart.
+ *  3. The unknown-command reply is rate-limited to one per 5 minutes, or a
+ *     stray forwarded message starts a ping-pong.
+ */
+async function assistantInboundTick() {
+  if (!telegramEnabled()) return;
+  const state = await readState();
+  const offset = Number(state.tgOffset) || 0;
+  const updates = await getUpdates(offset);
+  if (!updates.length) return;
+
+  const maxId = Math.max(...updates.map((u) => Number(u.update_id) || 0));
+  await writeState({ tgOffset: maxId + 1 });          // persist BEFORE acting (rule 2)
+
+  const allowed = String(process.env.TELEGRAM_CHAT_ID || "");
+  let enqueued = false;
+  let unknown = false;
+
+  for (const u of updates) {
+    const msg = u.message;
+    if (!msg || String(msg.chat?.id ?? "") !== allowed) continue;   // rule 1
+    const text = String(msg.text || "").trim();
+    if (!text) continue;
+
+    if (assistant.REPORT_RE.test(text)) {
+      if (enqueued) continue;                          // one digest per batch, not one per message
+      await q(`INSERT INTO "AgentRequest"(id,origin,kind,title,prompt,status,"createdAt","updatedAt")
+               VALUES ($1,'hermes','digest',$2,$3,'queued',now(),now())`,
+              [randomUUID(), "Krisna · báo cáo (Telegram)", JSON.stringify({ slot: "ondemand" })]);
+      await emit("status", "Krisna: digest queued (Telegram)", { level: "info" });
+      log("assistant: telegram report request → digest queued");
+      enqueued = true;
+    } else {
+      unknown = true;
+    }
+  }
+
+  if (unknown && !enqueued) {
+    const last = state.tgHelpAt ? Date.parse(state.tgHelpAt) : 0;
+    if (!(Date.now() - last < UNKNOWN_REPLY_COOLDOWN_MS)) {          // rule 3
+      const ok = await sendMessage('🪔 Krisna: gõ "báo cáo" để nhận tóm tắt.');
+      if (ok) await writeState({ tgHelpAt: new Date().toISOString() });
+    }
+  }
+}
+
+const nudgeTrunc = (s, n) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || "");
+
+/** `[fromHHMM, toHHMM)`, wrapping midnight when `to <= from` (e.g. 22:30 → 07:00). */
+function inQuietHours(nowMinutes, fromHHMM, toHHMM) {
+  const [fh, fm] = fromHHMM.split(":").map(Number);
+  const [th, tm] = toHHMM.split(":").map(Number);
+  const from = fh * 60 + fm, to = th * 60 + tm;
+  if (from === to) return false;
+  return from < to ? nowMinutes >= from && nowMinutes < to : nowMinutes >= from || nowMinutes < to;
+}
+
+/**
+ * Rule 1 (Spec F, F-5): one grouped nudge for every AgentRequest that has sat
+ * `awaiting_approval` longer than `approvalStaleH` — never one message per
+ * row, that is how a nudge becomes noise. Dedup + prune both live in
+ * `state.approvalNudged`, keyed by request id; `sweepStale()` expires rows at
+ * 24h so the map self-drains without an extra query.
+ *
+ * Returns the updated map, or null if nothing changed (caller skips the write).
+ */
+async function nudgeStaleApprovals(cfg, state) {
+  const { rows } = await q(
+    `SELECT r.id, r.title, r.profile, EXTRACT(EPOCH FROM (now()-r."createdAt"))/3600 AS "ageH",
+            cl.slug, cl.name
+       FROM "AgentRequest" r
+       LEFT JOIN LATERAL (SELECT slug,name FROM "Client"
+                           WHERE "hermesProfile"=r.profile OR slug=r.profile
+                           ORDER BY ("hermesProfile"=r.profile) DESC LIMIT 1) cl ON true
+      WHERE r.status='awaiting_approval'
+      ORDER BY r."createdAt" ASC`
+  );
+
+  const priorNudged = state.approvalNudged || {};
+  const stillAwaitingIds = new Set(rows.map((r) => r.id));
+  const pruned = {};
+  for (const id of Object.keys(priorNudged)) {
+    if (stillAwaitingIds.has(id)) pruned[id] = priorNudged[id];
+  }
+
+  const stale = rows.filter((r) => Number(r.ageH) >= cfg.nudges.approvalStaleH).slice(0, 20);
+  const fresh = stale.filter((r) => !pruned[r.id]);
+
+  if (fresh.length) {
+    const bullets = fresh.slice(0, 5).map(
+      (r) => `• ${r.name || r.slug || r.profile || "?"} — ${nudgeTrunc(r.title, 80)} (${Math.round(Number(r.ageH))}h)`
+    );
+    const extra = fresh.length > 5 ? `\n+${fresh.length - 5} nữa` : "";
+    const text = `🪔 Krisna nhắc: ${fresh.length} việc chờ duyệt >${cfg.nudges.approvalStaleH}h\n${bullets.join("\n")}${extra}\n\n${baseUrl()}/approvals`;
+    const ok = await sendMessage(text);
+    if (ok) {
+      for (const r of fresh) pruned[r.id] = new Date().toISOString();
+      await emit("status", `Krisna nhắc: ${fresh.length} duyệt chờ >${cfg.nudges.approvalStaleH}h`, { level: "warn" });
+    }
+  }
+
+  return JSON.stringify(priorNudged) === JSON.stringify(pruned) ? null : pruned;
+}
+
+/**
+ * Rule 2 (Spec F, F-5): `infra.mjs` reports host status but no outage
+ * duration (§1.5) — that bookkeeping lives here in `state.infraDownSince`.
+ * One nudge per outage (`infraNudged`); both keys clear on `status==='up'` so
+ * the next outage nudges again. `degraded` neither arms nor clears.
+ *
+ * Returns `{infraDownSince, infraNudged}` if changed, else null.
+ */
+async function nudgeInfraDown(cfg, state) {
+  const infraRaw = await getStore("infra-health");
+  const hosts = Array.isArray(infraRaw?.hosts) ? infraRaw.hosts : [];
+  const infraDownSince = { ...(state.infraDownSince || {}) };
+  const infraNudged = { ...(state.infraNudged || {}) };
+  let changed = false;
+
+  for (const h of hosts) {
+    if (h.status === "down") {
+      if (!infraDownSince[h.host]) { infraDownSince[h.host] = new Date().toISOString(); changed = true; }
+      const downMin = Math.round((Date.now() - Date.parse(infraDownSince[h.host])) / 60000);
+      if (downMin >= cfg.nudges.infraDownMin && !infraNudged[h.host]) {
+        const detail = h.lastError || h.detail;
+        const text = `🪔 Krisna nhắc: ${h.host} offline ${downMin} phút${detail ? ` (${detail})` : ""}\n${baseUrl()}/infrastructure`;
+        const ok = await sendMessage(text);
+        if (ok) {
+          infraNudged[h.host] = new Date().toISOString();
+          changed = true;
+          await emit("status", `Krisna nhắc: ${h.host} offline ${downMin} phút`, { level: "warn" });
+        }
+      }
+    } else if (h.status === "up" && (infraDownSince[h.host] || infraNudged[h.host])) {
+      delete infraDownSince[h.host];
+      delete infraNudged[h.host];
+      changed = true;
+    }
+    // degraded: neither arms nor clears (§F-5 step 4).
+  }
+
+  return changed ? { infraDownSince, infraNudged } : null;
+}
+
+/**
+ * Nudges (Spec F, F-5) — separate from the digest check above so a bridge
+ * with digests disabled still alerts on stale approvals/infra. Quiet hours
+ * suppress nudges only; digests are exempt (Andy set those times himself).
+ */
+async function assistantNudges(cfg, state) {
+  if (!cfg.nudges.enabled) return;
+  const nowIct = assistant.ictNow();
+  if (inQuietHours(nowIct.minutes, cfg.nudges.quietFromICT, cfg.nudges.quietToICT)) return;
+
+  const patch = {};
+  const approvalNudged = await nudgeStaleApprovals(cfg, state);
+  if (approvalNudged) patch.approvalNudged = approvalNudged;
+  const infraPatch = await nudgeInfraDown(cfg, state);
+  if (infraPatch) Object.assign(patch, infraPatch);
+
+  if (Object.keys(patch).length) await writeState(patch);
 }
 
 /* ─────────────── loops ─────────────── */
