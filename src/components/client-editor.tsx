@@ -148,7 +148,7 @@ export function ClientEditor({ mode, initial, onClose, onSaved }: {
         error={errors.repoPath}
         hint="Đường dẫn tuyệt đối trên máy Mac — bật offload sang Claude Code. Để trống nếu chưa có repo."
       >
-        <TextInput value={repoPath} onChange={(e) => setRepoPath(e.target.value)} placeholder="/Users/annguyen/Claude/Projects/Klaily" />
+        <TextInput value={repoPath} onChange={(e) => setRepoPath(e.target.value)} placeholder="/Users/annguyen/… — để trống nếu chưa có repo" />
       </Field>
       <DocumentsField value={documents} onChange={setDocuments} />
     </Modal>
