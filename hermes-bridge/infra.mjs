@@ -111,6 +111,7 @@ async function probeVpsAnta() {
   try {
     const out = await run("ssh", [
       "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=8", "-p", "65002",
+      "-i", "/home/andy/.ssh/id_ed25519_anta",
       "u550906860@72.60.238.152",
       "uptime; free -m | head -2; df -h / | tail -1",
     ]);
