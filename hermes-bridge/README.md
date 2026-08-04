@@ -46,3 +46,17 @@ website  ◀──read HermesTask/────   Postgres  ◀──mirror──
 - CLI arg shapes (`hermes kanban create <title>`, `hermes cron create <schedule> <prompt>`) are best-effort for Hermes v0.17.x — if your build differs, tweak `runRequest()` in `bridge.mjs`.
 - The bridge writes to Postgres with plain SQL, so it doesn't need Prisma.
 - Safe by design: side-effecting work waits for your approval in the website's Approval Inbox before the bridge will touch it.
+
+## Krisna — proactive assistant (Spec F, Phase 4)
+
+Four DataStore keys: `assistant-config` (UI-written, bridge-read), `assistant-state` (bridge-only: lastDigest, approvalNudged, infraDownSince, tgOffset, ccNudgeSentAt), `assistant-digest-log` (ring buffer, cap 20), `assistant-decisions` (dashboard panel feed).
+
+Two new kinds: `digest` (global morning/evening + on-demand Telegram briefing, profile = DIGEST_PROFILE, fallback renderer if LLM fails — never silent) and `report` (per-client on-demand summary, answered in-thread, triggered by `REPORT_RE` in chat).
+
+Env (hermes-bridge/.env): `DIGEST_PROFILE=admin`, `ASSISTANT_TELEGRAM_INBOUND=1` (0 disables inbound). Telegram inbound = short-poll getUpdates gated to TELEGRAM_CHAT_ID.
+
+Manual trigger for debugging:
+```sql
+INSERT INTO "AgentRequest"(id,origin,kind,title,prompt,status,"createdAt","updatedAt")
+VALUES ('t-digest-1','hermes','digest','Krisna digest (manual)','{"slot":"ondemand"}','queued',now(),now());
+```
