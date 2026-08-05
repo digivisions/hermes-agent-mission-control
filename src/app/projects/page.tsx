@@ -101,7 +101,8 @@ function SortableProject({ id, project, onEdit, onFiles }: { id: string; project
               {...attributes}
               {...listeners}
               className="cursor-grab active:cursor-grabbing p-1 rounded text-[var(--hq-text-ghost)] opacity-50 hover:opacity-100"
-              title="Drag to reorder"
+              aria-label="Kéo để sắp xếp"
+              title="Kéo để sắp xếp"
             >
               <GripVertical className="w-4 h-4" />
             </button>
@@ -216,7 +217,7 @@ export default function ProjectsPage() {
         <div>
           <div className="eyebrow mb-3">Workspace</div>
           <h1 className="text-[36px] font-semibold tracking-[-0.02em] leading-none text-[var(--hq-text)]" style={{ fontFamily: "var(--font-display)" }}>Projects</h1>
-          <p className="num text-[var(--hq-text-ghost)] text-[12.5px] mt-3">{projects.length} internal projects · drag to reorder</p>
+          <p className="num text-[var(--hq-text-ghost)] text-[12.5px] mt-3">{projects.length} internal projects · kéo để sắp xếp</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm theo tên hoặc mô tả…" className="w-56" />

@@ -19,16 +19,22 @@ export type DashboardSectionId =
   | "claude-usage"
   | "infra-health";
 
-/** Byte-for-byte the pre-Spec-H render order of src/app/page.tsx:346-367. */
+/**
+ * The pre-Spec-H render order of src/app/page.tsx:346-367, with one deliberate
+ * change: Andy asked (2026-08-05, after the spec was written) for the Claude
+ * usage box to sit right after the four main cockpit panels instead of near the
+ * bottom — so "claude-usage" is 5th, ahead of projects/infra/activity/
+ * infra-health. Every other entry keeps its original relative position.
+ */
 export const DEFAULT_DASHBOARD_ORDER: DashboardSectionId[] = [
   "status-strip",
   "throughput",
   "briefing",
   "assistant",
+  "claude-usage",
   "projects",
   "infra",
   "activity",
-  "claude-usage",
   "infra-health",
 ];
 
