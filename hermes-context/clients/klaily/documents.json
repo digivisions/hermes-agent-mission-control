@@ -1,0 +1,11 @@
+[
+  { "title": "klaily.co (live)", "url": "https://klaily.co" },
+  { "title": "Shopify admin", "url": "https://admin.shopify.com/store/klaily" },
+  { "title": "Live theme editor (#184729796881)",
+    "url": "https://admin.shopify.com/store/klaily/themes/184729796881/editor",
+    "note": "Theme đang live — mọi thay đổi cần Andy duyệt từng lần" },
+  { "title": "Repo (private)", "url": "https://github.com/digivisions/klaily" },
+  { "title": "Monthly Trio landing", "url": "https://klaily.co/pages/monthly-trio" },
+  { "title": "Marketing plan & growth strategy (Mac)",
+    "note": "docs/marketing-plan.md + docs/growth-strategy.{md,html,pdf} trong repo; bản Google Doc '(current)' trên Drive" }
+]

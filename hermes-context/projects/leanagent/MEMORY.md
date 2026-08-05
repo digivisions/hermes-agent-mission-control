@@ -1,0 +1,9 @@
+LeanAgent is Digital Visions' own cost-efficient AI assistant framework. The idea: route most requests to free LOCAL models and escalate only what genuinely needs a paid cloud model. A routing pipeline classifies each incoming request as tool-only, simple, medium or complex; local models handle simple and medium; complex work may use a cloud fallback, under budget controls.
+§
+Components, coordinated by a central orchestrator and initialised in dependency order: request classification, context management, tool-output summarisation, budget management, caching, model management, tools, memory, plus optional communication and personality agents. Model routing depends on the lower-level agents, so initialisation order is not arbitrary.
+§
+Persistence is SQLite only, via aiosqlite — no external database is required. Tests use pytest with pytest-asyncio; they are asynchronous and will not run without that plugin. Health check: python -m leanagent --health. Install in editable mode only once the existing environment is understood.
+§
+Current phase: PAUSED, low priority. The open question is strategic, not technical — whether LeanAgent still has a distinct purpose now that Hermes and JARVIS exist. If someone asks "what's next on leanagent", the honest answer is that it is waiting on Andy's keep, consolidate or archive decision.
+§
+Standing rules: NEVER clean, reset or broadly stage this repository. There are 31 tracked working-tree entries and two unfinished worktrees — one on tool-output extraction and summarisation, one on tool-specific context instructions — and all of them must be understood before anything is discarded. Model names in the project instructions are likely stale relative to the currently installed local models, and the budget limits are configuration rather than universal truth: reverify both instead of quoting them as current.

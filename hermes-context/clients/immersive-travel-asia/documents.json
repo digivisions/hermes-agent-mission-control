@@ -1,0 +1,14 @@
+[
+  { "title": "staging-ita.digivisions.net (WordPress staging)",
+    "url": "https://staging-ita.digivisions.net",
+    "note": "Bản live hiện tại — theme ita v2.9.1" },
+  { "title": "WP Admin", "url": "https://staging-ita.digivisions.net/wp-admin/",
+    "note": "User digivisions — credentials nằm ở ita-staging-credentials.md trên Mac, không sao chép" },
+  { "title": "Journeys", "url": "https://staging-ita.digivisions.net/journeys/",
+    "note": "18 hành trình Việt Nam đã load; mới xác minh URL trả 200, chưa QA nội dung" },
+  { "title": "Kế hoạch build WordPress (ổ ngoài)",
+    "note": "/Volumes/DATA2/1-Development/Immersive/ita-wordpress-plan.md — cần mount DATA2" },
+  { "title": "Demo tĩnh Netlify (đã ngừng)",
+    "url": "https://immersive-travel-asia-demo.netlify.app",
+    "note": "Đã retire — không dùng để trình bày với khách nữa" }
+]

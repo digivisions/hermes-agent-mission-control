@@ -1,0 +1,9 @@
+Client "SOONGS" (soongs.vn) is a fashion brand based in Sai Gon. Digital Visions has a freelance website-design engagement: a Figma design system plus the full page set, with a Shopify build to follow. Client contact is Ha Vi Phan, who designs in Canva; assets are shared through a Google Drive folder. The site is bilingual EN/VI with prices in VND. Quotation issued July 2026.
+§
+HARD design constraints — these are the reason a whole first concept was rejected. Palette is WHITE, BLACK and GREY ONLY; an earlier warm cream/butter/blush palette was explicitly narrowed away and must not be reintroduced. Typography follows the "A GENTLE SEASON" catalogue: a Helvetica-style grotesque (Archivo as placeholder) plus the size-chart serif as accent (Fraunces). A client-supplied replacement font is still pending. Casing rule: product names ALWAYS UPPERCASE, all other UI text lowercase.
+§
+Agreed UI decisions: size picker is plain text with the selected size underlined, no boxes. CTA is underlined text plus an arrow ("add to cart"). Home and nav use the monogram symbol, not the vertical wordmark. References are palomawool.com (entry = country/language modal over a full-screen video intro) and st-agni.com (inner pages, centred logo, airy grid).
+§
+Standing rules: client-facing Figma pages are only the approved ones — ALL work in progress stays on the separate hidden page. Draft copy (About, Shipping, FAQ) is flagged in frame names and must never be presented as final. Archive superseded options; do not delete them.
+§
+Current phase (2026-08): the client chose Option 1 "GALLERY" on 2026-07-23. Round-2 desktop comments were applied 2026-08-02, and a full mobile page set (390px) was built 2026-08-03. Waiting on the client's font name, approved copy for the DRAFT sections, and confirmation of the round-2 desktop plus new mobile set — then the Shopify implementation. Detail: the soongs-operations skill.

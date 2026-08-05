@@ -1,0 +1,14 @@
+[
+  { "title": "soongs.vn", "url": "https://soongs.vn", "note": "Site hiện tại — bản thiết kế mới chưa triển khai" },
+  { "title": "Figma — SOONGS Website Design System",
+    "url": "https://www.figma.com/design/YH8ugqdChddaU8KeUzk9Sm",
+    "note": "Deliverable chính. Trang client-facing chỉ là các trang đã duyệt; WIP nằm ở trang ẩn riêng." },
+  { "title": "Tham chiếu UX — palomawool.com", "url": "https://palomawool.com",
+    "note": "Mẫu trang ENTRY: modal quốc gia/ngôn ngữ trên nền video toàn màn hình" },
+  { "title": "Tham chiếu UX — st-agni.com", "url": "https://st-agni.com",
+    "note": "Mẫu trang trong: logo canh giữa, lưới thoáng" },
+  { "title": "A GENTLE SEASON — catalogue (Mac)",
+    "note": "/Users/annguyen/Documents/Work & Business/Freelance/SOONGS/A GENTLE SEASON CATALOGUE.pdf — nguồn duy nhất cho tên, giá, số đo sản phẩm" },
+  { "title": "Báo giá Jul 2026 (ổ ngoài)",
+    "note": "/Volumes/DATA2/1-Development/SOONGS/BaoGia_SOONGS_Jul2026_DigitalVisions.pdf — cần mount DATA2" }
+]

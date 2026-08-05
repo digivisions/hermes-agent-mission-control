@@ -1,0 +1,9 @@
+[
+  { "title": "tamnangrsvp.digivisions.net", "url": "https://tamnangrsvp.digivisions.net",
+    "note": "Bản deploy — chưa xác minh lại trạng thái Netlify" },
+  { "title": "Repo (Mac)",
+    "note": "/Users/annguyen/Documents/1-Development/Tammy&Nang/tamnang-wedding-rsvp — chưa init git" },
+  { "title": "Nội dung đám cưới (Mac)",
+    "note": "src/config/wedding.ts — nguồn sự thật duy nhất cho ngày, địa điểm, timeline, story, travel, activities" },
+  { "title": "Obsidian note (Mac)", "note": "Projects/Tammy & Nang.md" }
+]

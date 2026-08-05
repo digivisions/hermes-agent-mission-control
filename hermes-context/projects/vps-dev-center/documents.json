@@ -1,0 +1,11 @@
+[
+  { "title": "code.digivisions.net", "url": "https://code.digivisions.net", "note": "code-server" },
+  { "title": "agent.digivisions.net", "url": "https://agent.digivisions.net", "note": "Agent Zero" },
+  { "title": "monitor.digivisions.net", "url": "https://monitor.digivisions.net", "note": "Netdata" },
+  { "title": "music.digivisions.net", "url": "https://music.digivisions.net",
+    "note": "Landing page nhạc — Express :3001 + Google Sheet, pm2 process music-landing-api" },
+  { "title": "Complete Setup Guide (Obsidian, Mac)",
+    "note": "VPS Development Center-Complete Setup Guide — kiến trúc đầy đủ, các bước cài đặt, ma trận chọn công cụ" },
+  { "title": "Báo cáo security audit (Mac)",
+    "note": "SECURITY_AUDIT_COMPLETION_REPORT.md + security-audit-report.md trong /Users/annguyen/Documents/1-Development/VPS_DEV_CENTER — còn credentials plaintext chưa xoay vòng" }
+]

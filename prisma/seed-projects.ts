@@ -103,20 +103,37 @@ const PROJECTS = [
     slug: "realxr", name: "RealXR", type: "product",
     status: "planned", priority: "medium", accent: "#818cf8",
     tags: ["xr"],
-    location: null,
-    description: "RealXR — scope not yet captured in the vault.",
-    overview: null,
-    nextActions: ["Capture scope, stack and canonical location here."],
+    location: "/Users/annguyen/RealXR_Character",
+    description: "Premium character-driven XR product, sold through video.",
+    // Scope captured 2026-08-05 (Spec I, I-7/§7.5) — hand-written by Hermes,
+    // then reconciled against the actual asset files in RealXR_Character.
+    // RealXR has no repo, no CLAUDE.md and no Obsidian note; hermes-context/
+    // projects/realxr/ is now its only written record.
+    overview:
+      "Digital Visions' own premium, character-driven XR experience product. Sold through video: reels and scripted CGI/VFX scenes, mostly limbo-space product shots of the XR glasses. ONE canonical reference character — a sharp-featured Vietnamese woman in the Veronica Ngo mould, gunmetal coat with mandarin collar; CHARACTER_REFERENCE.png is locked, with turnaround/expression/posing sheets for consistency. Two earlier casting options (Jung Ho-yeon style, edgy K-pop style) were explored and NOT chosen. The prop is Prop_XR_Glasses_DesignV2.png (V2 supersedes V1) plus a detail sheet. Current phase: script and promo video production — a 15s TVC script, a treatment deck and a storyboard exist.",
+    nextActions: [
+      "Finish the promo video from the 15s TVC script, treatment deck and storyboard.",
+      "Always anchor visuals to CHARACTER_REFERENCE.png and the V2 prop sheet — never generate a new face.",
+    ],
     waitingOn: [],
   },
   {
     slug: "andynguyen-work", name: "andynguyen.work", type: "personal",
     status: "planned", priority: "medium", accent: "#2dd4bf",
     tags: ["portfolio", "website"],
-    location: null,
-    description: "Personal portfolio site.",
-    overview: null,
-    nextActions: ["Decide stack and hosting.", "Draft the case-study list."],
+    location: "/Users/annguyen/Documents/1-Development/Portfolio",
+    description: "andynguyen.work — Andy's portfolio site. AI systems positioning, NOT ecommerce.",
+    // Scope captured 2026-08-05 (Spec I, I-7/§7.6). The site is live and
+    // built, so the old "decide stack and hosting" actions were stale. The
+    // case-study hierarchy below follows the live index.html + llms.txt, which
+    // differ from the spec's hand-written draft (ITA, not AutoX, is in the
+    // featured pair) — see hermes-context/projects/andynguyen-work/context.md.
+    overview:
+      "Andy Nguyen's public portfolio site — the personal-brand layer for Digital Visions' founder. Positioning is AI automation, digital systems and technical leadership (\"Make your operations run better with practical AI\"); it is NOT an ecommerce site. Case-study hierarchy: MOVE Fitness VN is the flagship; Klaily and Immersive Travel Asia are the featured pair; AutoX Lubricants, Line Pilates Vietnam, Blu Creative, Amalafox and Tam & Nang RSVP are compact entries. Echo and AndyPi sit in the Lab, CHUBB APAC only in the background text. Static site with a Strapi CMS alongside and a Vietnamese locale under vi/.",
+    nextActions: [
+      "Keep llms.txt in sync whenever the case-study list or positioning changes — it is what an AI reading the site quotes.",
+      "Hold the AI-systems positioning in copy; don't let it drift toward generic web-agency language.",
+    ],
     waitingOn: [],
   },
   {

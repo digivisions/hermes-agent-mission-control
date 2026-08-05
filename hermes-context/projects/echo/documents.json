@@ -1,0 +1,13 @@
+[
+  { "title": "Landing page — meet-echo", "url": "https://meet-echo.netlify.app",
+    "note": "Trang giới thiệu công khai + waitlist (Netlify Forms)" },
+  { "title": "Backend API", "url": "https://echo.digivisions.net",
+    "note": "FastAPI chạy trên AndyPi, ra internet qua Cloudflare Tunnel" },
+  { "title": "Repo (private)", "url": "https://github.com/digivisions/echo" },
+  { "title": "Repo canonical (Mac)",
+    "note": "/Users/annguyen/1-Development/Micro_Recorder — bản trong Documents/ đã đóng băng, chỉ đọc" },
+  { "title": "Project Echo Plan (specs, Mac)",
+    "note": "Thư mục specs trong repo: 01 firmware · 04 device UX · 06 backend · 08 app · 09 C3 BLE contract. Cleanroom — chỉ đọc từ đây." },
+  { "title": "Echo Business Plan 2026-2029 (Mac)",
+    "note": "PDF chưa commit ở gốc repo — chưa được review" }
+]

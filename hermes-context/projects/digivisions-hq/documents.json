@@ -1,0 +1,9 @@
+[
+  { "title": "myhq.digivisions.net (production)", "url": "https://myhq.digivisions.net" },
+  { "title": "Hermes dashboard", "url": "https://hermes.digivisions.net",
+    "note": "Basic auth, user andy — dashboard của chính agent Hermes" },
+  { "title": "Repo (Mac)", "note": "/Users/annguyen/1-Development/hermes-agent-mission-control — README.md + ONBOARDING.md là tài liệu gốc" },
+  { "title": "hermes-context/ (nguồn ngữ cảnh)",
+    "note": "Thư mục git trong repo: mỗi client/project 4 file MEMORY.md / SKILL.md / context.md / documents.json. Nạp lại bằng scripts/seed-profile-context.sh và scripts/seed-hq-context.ts" },
+  { "title": "Obsidian note (Mac)", "note": "Projects/DigivisionsHQ.md" }
+]

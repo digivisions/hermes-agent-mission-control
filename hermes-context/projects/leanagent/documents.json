@@ -1,0 +1,7 @@
+[
+  { "title": "Repo + project instructions (Mac)",
+    "note": "/Users/annguyen/Documents/1-Development/leanagent — CLAUDE.md và AGENTS.md là nguồn sự thật" },
+  { "title": "Worktrees chưa hoàn thành (Mac)",
+    "note": ".worktrees/001-tool-output-extraction-summarization và .worktrees/003-tool-specific-context-instructions — cần triage merge/archive/discard từng cái" },
+  { "title": "Obsidian note (Mac)", "note": "Projects/leanagent.md" }
+]

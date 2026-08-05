@@ -1,0 +1,8 @@
+[
+  { "title": "Repo + CLAUDE.md (Mac)",
+    "note": "/Users/annguyen/Documents/1-Development/JARVIS — CLAUDE.md là nguồn sự thật duy nhất, đọc trước khi code" },
+  { "title": "Phase plans (Mac)", "note": "plans/ trong thư mục dự án — kế hoạch Phase 3 (memory) ở đây" },
+  { "title": "BytePlus ModelArk", "url": "https://www.byteplus.com/en/product/modelark",
+    "note": "Nhà cung cấp LLM hiện tại (OpenAI-compatible) — đã đổi từ Anthropic tháng 6/2026" },
+  { "title": "Obsidian note (Mac)", "note": "Projects/JARVIS.md" }
+]
