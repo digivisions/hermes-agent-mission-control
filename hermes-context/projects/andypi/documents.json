@@ -1,0 +1,12 @@
+[
+  { "title": "Homepage dashboard (tailnet)", "url": "http://100.80.9.27",
+    "note": "Chỉ truy cập được khi đang trong Tailscale" },
+  { "title": "Echo backend (public)", "url": "https://echo.digivisions.net",
+    "note": "Compose project riêng ở /srv/echo-backend, ra internet qua Cloudflare Tunnel" },
+  { "title": "Kế hoạch triển khai (Mac)",
+    "note": "/Users/annguyen/Documents/1-Development/RaspberryPi/ANDYPI-IMPLEMENTATION-PLAN.md" },
+  { "title": "Thiết kế split-tunnel / exit node (Mac)",
+    "note": "/Users/annguyen/Documents/1-Development/RaspberryPi/ANDYPI-SPLIT-TUNNEL-DESIGN.md" },
+  { "title": "Credentials (Mac + Pi)",
+    "note": "andypi-credentials.txt trên Mac; /srv/stack/.env trên Pi (chmod 600) — chỉ tham chiếu, không sao chép nội dung" }
+]

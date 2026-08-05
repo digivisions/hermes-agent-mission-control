@@ -1,0 +1,9 @@
+[
+  { "title": "Thư mục làm việc (Mac)", "note": "/Users/annguyen/RealXR_Character — toàn bộ asset, script và deck nằm ở đây" },
+  { "title": "Nhân vật gốc — CHARACTER_REFERENCE.png",
+    "note": "Reference khoá cứng. Mọi hình ảnh RealXR phải bám theo nhân vật này. Không bao giờ tạo gương mặt mới." },
+  { "title": "Prop XR Glasses V2",
+    "note": "Prop_XR_Glasses_DesignV2.png + Prop_RealXR_Glasses_DetailSheet.png — V2 thay thế V1" },
+  { "title": "Kịch bản TVC 15 giây", "note": "RealXR_TVC_Script_15s.md" },
+  { "title": "Treatment deck", "note": "treatment_deck.html + thư mục storyboard/" }
+]

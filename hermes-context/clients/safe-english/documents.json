@@ -1,0 +1,9 @@
+[
+  { "title": "anhnguantoan.com (live)", "url": "https://anhnguantoan.com" },
+  { "title": "Nhật ký Online Testing (WP Admin)",
+    "url": "https://anhnguantoan.com/wp-admin/admin.php?page=quiz-log-capture",
+    "note": "Số lượt thi hôm nay + telemetry lỗi của học viên" },
+  { "title": "Danh mục bộ đề", "url": "https://anhnguantoan.com/danh-muc-bo-de/" },
+  { "title": "Repo (Mac)", "note": "/Volumes/DATA2/1-Development/Anh Ngu An Toan/anhnguantoan-dev — cần mount DATA2" },
+  { "title": "Hồ sơ & đề xuất AMS (Mac)", "note": "~/Documents/1-Development/anhnguantoan/" }
+]

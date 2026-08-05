@@ -1,0 +1,9 @@
+Echo (repo folder Micro_Recorder) is Digital Visions' own hardware product: a pocket voice recorder. An ESP32 board with a 1.54" e-ink screen, two-button UI, ES8311 codec, microSD and BLE/Wi-Fi. You speak into it; the device stores the recording FIRST, then syncs it, and the cloud transcribes and structures it into a titled, tagged note.
+§
+Three components in one private monorepo, github.com/digivisions/echo: echo-firmware (ESP-IDF 5.5.1), echo-app (Expo SDK 57 / React Native, reads Supabase directly, tabs Today/Library/Chat/Device with a RAG "Ask Echo" chat), and echo-backend (FastAPI + Redis/RQ worker + Postgres/pgvector on Supabase; Groq Whisper for speech, Gemini with Groq failover for structuring). The backend runs on the AndyPi homelab and is public at echo.digivisions.net via a Cloudflare Tunnel. Landing page: meet-echo.netlify.app.
+§
+Two sync paths by design: direct over home Wi-Fi, OR "proximity sync" where the phone joins the device's SoftAP, pulls the audio and uploads it — so Echo never needs the user's Wi-Fi password or the internet. Audio is local-first: the phone's cache is the primary copy and the cloud discards audio after transcription.
+§
+Standing rules: a proximity sync CANNOT be observed over USB — attaching the cable is what breaks it, so debug on battery using the device's own counters. ONE radio, ONE owner: SoftAP and cloud sync at the same time hard-freeze Wi-Fi. Buttons need a firm ~1 second press, not a tap. Never claim a milestone is hardware-verified unless the record says so. Depth: the echo-operations skill.
+§
+Current phase (2026-08): the ESP32-S3 firmware port; the C6 tree is a frozen archive. Proximity sync debugging is resolved. Phase 5 sleep work is PARKED — deep sleep behaves like power loss. Phase 6 bench measurement is next and needs real instruments.

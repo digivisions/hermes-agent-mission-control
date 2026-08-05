@@ -1,0 +1,9 @@
+"Immersive Travel Asia" (ITA) is a pan-Southeast-Asia luxury travel brand, a client project delivered by Digital Visions. The live build is a WordPress site on Hostinger staging at staging-ita.digivisions.net; the planned launch domain is immersivetravelasia.digivisions.net (DNS on Cloudflare). The earlier static Netlify approval demo has been retired — do not point anyone at it.
+§
+Design direction is "1a Heritage", chosen from a Claude Design project: jade/gold/cream palette, Playfair Display + Source Sans 3.
+§
+Stack: a custom WordPress CLASSIC theme "ita" plus the plugin "ita-core" — deliberately not headless. ACF Pro is the only third-party plugin. Content types: Journey, Destination, Team, plus a private Enquiry CPT; taxonomies Country and Travel Style. There is no form plugin — a theme handler with a nonce and honeypot writes an Enquiry and sends wp_mail. ACF field groups are registered in PHP, so the admin Field Groups list looks empty; that is normal, not a bug.
+§
+Standing rules: must-land logic belongs in the THEME, because plugin deploys are unreliable on this host. NEVER declare the same PHP symbol in both theme and plugin — it is a fatal redeclare and takes the whole site to a 500. After any asset change, bump ITA_THEME_VER and clear the website cache, or LiteSpeed serves stale CSS. Local WordPress is the source of truth. Deploy detail: the immersive-travel-asia-operations skill.
+§
+Current phase (2026-08): staging is live and fully populated — 6 pages, 10 destinations, 18 journeys, 4 team, 4 blog posts, ~98 media; theme at v2.9.1 after a real 390px mobile-QA pass. Pending: the ACF Pro license key (Andy to enter), WebP delivery, srcset on single-destination journey cards, About-dropdown labels, and an SMTP decision for reliable wp_mail. Launch-domain migration only after staging acceptance.

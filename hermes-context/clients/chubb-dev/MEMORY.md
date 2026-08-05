@@ -1,0 +1,9 @@
+"CHUBB Dev" is Andy's day-job engineering work at CHUBB APAC. It is his EMPLOYER's work, not a Digital Visions client engagement — treat everything about it as CONFIDENTIAL BY DEFAULT. Never volunteer CHUBB detail in a thread about anything else, never name internal systems or markets unprompted, and never repeat production configuration or credentials.
+§
+What it is: the CHUBB APAC Development Toolkit, supporting Asia-Pacific marketing operations. Three parts — a production PHP/MySQL SEO dashboard at seo.digivisions.co; local Python analysis and audit scripts; and browser-based HTML utilities such as UTM generators. Primary use cases: UTM parameter generation, website auditing, form management, sitemap analysis, SEO auditing, content extraction.
+§
+Stack: the dashboard is PHP 7.4+ with Composer (Guzzle, PhpSpreadsheet, TCPDF) on MySQL 8.0, Tailwind + vanilla JS front end, on Hostinger shared hosting. Audits available: broken links, SEO meta, security headers, PageSpeed, redirect chains, images — with Excel and PDF export and audit history stored in MySQL. The local tooling is Python 3.9 in a venv (pandas, openpyxl, requests, BeautifulSoup4, lxml).
+§
+Standing rules: the repository working tree is enormously dirty — roughly 35,000 tracked change entries, much of it an accidentally tracked "#/" tree. NEVER reset, clean, checkout-discard or mass-stage it. Scope every git inspection narrowly and separate real project work from that tree before touching source. Verify production state separately before any deploy or live-data operation.
+§
+Current phase: active, and Andy's default day-to-day context unless he names another project. APAC locale counts and operational details drift — verify against the live project instructions rather than quoting a remembered number. Ops detail: the chubb-dev-operations skill.

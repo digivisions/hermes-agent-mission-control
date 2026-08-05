@@ -1,0 +1,11 @@
+[
+  { "title": "id.movevn.com (production)", "url": "https://id.movevn.com" },
+  { "title": "staging.movevn.com", "url": "https://staging.movevn.com" },
+  { "title": "movevn.com (marketing)", "url": "https://movevn.com" },
+  { "title": "Repo (private)", "url": "https://github.com/digivisions/id.movevn.com" },
+  { "title": "Security & performance audit 2026-07 (Mac)",
+    "note": "plans/security-performance-audit-2026-07.md trong repo — mục #1: xoay vòng secrets bị lộ trong git history" },
+  { "title": "Runbook sự cố (Mac)", "note": "docs/RUNBOOK.md trong repo" },
+  { "title": "Hồ sơ kinh doanh (Mac)",
+    "note": "/Users/annguyen/Documents/1-Development/MoveVN/ — hợp đồng, báo giá, rate card, db-backups" }
+]
