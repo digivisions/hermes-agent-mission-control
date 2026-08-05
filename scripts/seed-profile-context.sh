@@ -225,8 +225,10 @@ seed_one() {
     return 0
   fi
 
-  # 2. Refuse to create.
-  if ! docker exec "$CONTAINER" hermes profile list 2>/dev/null | grep -qx "$profile"; then
+  # 2. Refuse to create. Check the profiles directory, not `hermes profile list` —
+  # that command crashes with a PermissionError traceback on the VPS (the container
+  # user can't stat every profile's config), so its empty output would fail every slug.
+  if ! docker exec "$CONTAINER" ls /opt/data/profiles/ 2>/dev/null | grep -qx "$profile"; then
     die "$slug: profile '$profile' does not exist — run ./scripts/provision-profile.sh $slug first"
     return 1
   fi
