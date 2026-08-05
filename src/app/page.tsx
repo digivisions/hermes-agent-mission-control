@@ -3,13 +3,21 @@
 import { useEffect, useState } from "react";
 import {
   Briefcase, Activity, HardDrive,
-  CircleCheck, CircleDashed, CircleAlert, LayoutGrid,
+  CircleCheck, CircleDashed, CircleAlert, LayoutGrid, GripVertical,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { HermesBriefing } from "@/components/hermes-briefing";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { ClaudeUsageCard } from "@/components/claude-usage-card";
-import { Eyebrow, Panel, Pill, SectionHeader } from "@/components/ui/kit";
+import { Eyebrow, Panel, Pill, SectionHeader, Button } from "@/components/ui/kit";
+import {
+  DEFAULT_DASHBOARD_ORDER, normalizeDashboardOrder, type DashboardSectionId,
+} from "@/lib/dashboard-layout";
 
 // ── Types ─────────────────────────────────────────────────
 interface Project {
@@ -134,7 +142,7 @@ function InfraPanel({ infra }: { infra: InfraData | null }) {
 function InfrastructureHealthPanel({ data }: { data: InfraHealth | null }) {
   const hosts = data?.hosts ?? [];
   return (
-    <Panel className="p-6 mb-6 hq-rise" style={rise(12)}>
+    <Panel className="p-6 h-full">
       <SectionHeader label="Infrastructure" title="Fleet health" />
       {hosts.length === 0 ? (
         <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-10 text-center">no data yet</div>
@@ -227,9 +235,9 @@ function StatusStrip({ c }: { c: Cockpit | null }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
-      {tiles.map((tile, i) => (
-        <Panel key={tile.label} href={tile.href} className="p-5 hq-rise" style={rise(i)}>
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      {tiles.map((tile) => (
+        <Panel key={tile.label} href={tile.href} className="p-5">
           <Eyebrow>{tile.label}</Eyebrow>
           <div className="num font-semibold text-[30px] leading-none mt-2.5 tracking-[-0.02em]" style={{ color: tile.color }}>
             {tile.money
@@ -250,7 +258,7 @@ function StatusStrip({ c }: { c: Cockpit | null }) {
 function ThroughputChart({ data }: { data: Cockpit["throughput"] }) {
   const empty = data.every((d) => d.done + d.failed + d.rejected === 0);
   return (
-    <Panel className="p-6 mb-6 hq-rise" style={rise(5)}>
+    <Panel className="p-6 h-full">
       <SectionHeader label="Throughput" title="Agent tasks · last 14 days" />
       {empty ? (
         <div className="text-[12.5px] text-[var(--hq-text-ghost)] py-14 text-center">
@@ -275,6 +283,100 @@ function ThroughputChart({ data }: { data: Cockpit["throughput"] }) {
   );
 }
 
+// ── Spec H · draggable cockpit ────────────────────────────
+/**
+ * Column spans on the single 12-col cockpit grid (D1). At `xl` these reproduce
+ * the pre-Spec-H layout exactly: 12 (strip) · 12 (chart) · 8+4 (briefing+krisna)
+ * · 4+4+4 (projects/infra/activity) · 12 (claude) · 12 (fleet). The `md` tier
+ * (6 cols) keeps the old 2-up behaviour of the three small panels. Below `md`
+ * everything is one column, as today.
+ * Literal strings only — Tailwind's scanner cannot see interpolated classes.
+ */
+const SECTION_SPAN: Record<DashboardSectionId, string> = {
+  "status-strip": "md:col-span-6 xl:col-span-12",
+  "throughput":   "md:col-span-6 xl:col-span-12",
+  "briefing":     "md:col-span-6 xl:col-span-8",
+  "assistant":    "md:col-span-6 xl:col-span-4",
+  "projects":     "md:col-span-3 xl:col-span-4",
+  "infra":        "md:col-span-3 xl:col-span-4",
+  "activity":     "md:col-span-3 xl:col-span-4",
+  "claude-usage": "md:col-span-6 xl:col-span-12",
+  "infra-health": "md:col-span-6 xl:col-span-12",
+};
+
+const SECTION_LABEL: Record<DashboardSectionId, string> = {
+  "status-strip": "Chỉ số nhanh",
+  "throughput":   "Throughput",
+  "briefing":     "Chief of Staff",
+  "assistant":    "Krisna",
+  "projects":     "Active Projects",
+  "infra":        "Infrastructure",
+  "activity":     "Recent Activity",
+  "claude-usage": "Claude Code usage",
+  "infra-health": "Fleet health",
+};
+
+/**
+ * Off arrange-mode this renders a plain positioned div and useSortable attaches
+ * nothing (`disabled`), so the cockpit behaves exactly as it did before Spec H —
+ * charts, tile links, Generate buttons, the settings gear, scrolling and touch
+ * are all untouched (D2).
+ *
+ * On, an absolutely-positioned overlay takes every pointer event for the panel.
+ * That is deliberate: the panels' own top-right controls (hermes-briefing.tsx:86-96,
+ * assistant-panel.tsx:124-138) leave no free corner for a grip, and a full-surface
+ * drag target means Andy can grab a panel anywhere.
+ *
+ * CSS.Translate, not CSS.Transform — the panels are different sizes and the
+ * scale terms visibly squash them mid-drag (D3).
+ */
+function SortableSection({
+  id, index, arranging, children,
+}: { id: DashboardSectionId; index: number; arranging: boolean; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id, disabled: !arranging });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        ...rise(index),
+        transform: CSS.Translate.toString(transform),
+        transition,
+        zIndex: isDragging ? 30 : undefined,
+        boxShadow: isDragging ? "0 18px 40px -12px rgba(16,24,40,0.28)" : undefined,
+        borderRadius: "var(--r-lg)",
+      }}
+      className={`relative hq-rise ${SECTION_SPAN[id]} ${isDragging ? "opacity-90" : ""}`}
+      onDragStart={(e) => e.preventDefault()}
+    >
+      {children}
+      {arranging && (
+        <div
+          {...attributes}
+          {...listeners}
+          role="button"
+          aria-label={`Kéo để sắp xếp — ${SECTION_LABEL[id]}`}
+          title="Kéo để sắp xếp"
+          className="absolute inset-0 z-20 flex items-start justify-end p-3 cursor-grab active:cursor-grabbing"
+          style={{
+            borderRadius: "var(--r-lg)",
+            border: "2px dashed color-mix(in srgb, var(--accent) 45%, transparent)",
+            background: "color-mix(in srgb, var(--accent) 6%, transparent)",
+          }}
+        >
+          <span
+            className="rounded-full p-1.5 text-[var(--hq-text-ghost)]"
+            style={{ background: "var(--hq-elev-1)", border: "1px solid var(--hq-hairline)" }}
+          >
+            <GripVertical className="w-4 h-4" />
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────
 export default function Dashboard() {
   const [time, setTime] = useState(new Date());
@@ -283,8 +385,21 @@ export default function Dashboard() {
   const [infra, setInfra] = useState<InfraData | null>(null);
   const [cockpit, setCockpit] = useState<Cockpit | null>(null);
   const [infraHealth, setInfraHealth] = useState<InfraHealth | null>(null);
+  const [order, setOrder] = useState<DashboardSectionId[]>(DEFAULT_DASHBOARD_ORDER);
+  const [arranging, setArranging] = useState(false);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Layout loads once. Deliberately NOT in the 30s poll below: a poll response
+  // landing after a drag would snap the panels back mid-session (D10).
+  useEffect(() => {
+    fetch("/api/dashboard-layout")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.order) setOrder(normalizeDashboardOrder(d.order)); })
+      .catch(() => {});   // silence: DEFAULT_DASHBOARD_ORDER is already rendering
+  }, []);
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
@@ -303,10 +418,54 @@ export default function Dashboard() {
     return () => clearInterval(iv);
   }, []);
 
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setOrder(prev => {
+      const next = arrayMove(
+        prev,
+        prev.indexOf(active.id as DashboardSectionId),
+        prev.indexOf(over.id as DashboardSectionId),
+      );
+      fetch("/api/dashboard-layout", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: next }),
+      }).catch(() => {});
+      return next;
+    });
+  };
+
   if (!mounted) return null;
 
   const activeCount = projects.filter(p => p.status === "active" || p.status === "ongoing").length;
   const openTasks = cockpit?.tiles.openTasks ?? 0;
+
+  const renderSection = (id: DashboardSectionId) => {
+    switch (id) {
+      case "status-strip":  return <StatusStrip c={cockpit} />;
+      case "throughput":    return <ThroughputChart data={cockpit?.throughput ?? []} />;
+      case "briefing":      return <HermesBriefing />;
+      case "assistant":     return <AssistantPanel />;
+      case "projects":      return (
+        <Panel className="p-7 h-full flex flex-col">
+          <Eyebrow>Active Projects</Eyebrow><div className="mt-4 flex-1"><ProjectsPanel projects={projects} /></div>
+        </Panel>
+      );
+      case "infra":         return (
+        <Panel className="p-7 h-full flex flex-col">
+          <Eyebrow>Infrastructure</Eyebrow><div className="mt-4 flex-1"><InfraPanel infra={infra} /></div>
+        </Panel>
+      );
+      case "activity":      return (
+        <Panel className="p-7 h-full flex flex-col">
+          <Eyebrow>Recent Activity</Eyebrow><div className="mt-4 flex-1"><ActivityPanel /></div>
+        </Panel>
+      );
+      case "claude-usage":  return <ClaudeUsageCard />;
+      case "infra-health":  return <InfrastructureHealthPanel data={infraHealth} />;
+    }
+  };
 
   return (
     <div className="relative z-10 w-full mx-auto pb-20">
@@ -340,31 +499,31 @@ export default function Dashboard() {
             <LayoutGrid className="w-3 h-3 text-[var(--hq-accent)]" />
             <span className="num text-[11.5px] text-[var(--hq-text-2)]">{openTasks} open tasks</span>
           </div>
+          {/* kit's Button takes no `title` (kit.tsx:146-155) — the tooltip lives on a wrapper. */}
+          <span className="inline-flex" title={arranging ? "Thoát chế độ sắp xếp" : "Kéo các panel để sắp xếp lại"}>
+            <Button
+              size="sm"
+              variant={arranging ? "primary" : "ghost"}
+              onClick={() => setArranging(a => !a)}
+            >
+              <GripVertical className="w-3.5 h-3.5" />
+              {arranging ? "Xong" : "Sắp xếp"}
+            </Button>
+          </span>
         </div>
       </div>
 
-      <StatusStrip c={cockpit} />
-      <ThroughputChart data={cockpit?.throughput ?? []} />
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-stretch mb-6">
-        <div className="xl:col-span-2 hq-rise" style={rise(6)}><HermesBriefing /></div>
-        <div className="xl:col-span-1 hq-rise" style={rise(7)}><AssistantPanel /></div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-stretch">
-        <Panel className="p-7 hq-rise flex flex-col" style={rise(8)}>
-          <Eyebrow>Active Projects</Eyebrow><div className="mt-4 flex-1"><ProjectsPanel projects={projects} /></div>
-        </Panel>
-        <Panel className="p-7 hq-rise flex flex-col" style={rise(9)}>
-          <Eyebrow>Infrastructure</Eyebrow><div className="mt-4 flex-1"><InfraPanel infra={infra} /></div>
-        </Panel>
-        <Panel className="p-7 hq-rise flex flex-col" style={rise(10)}>
-          <Eyebrow>Recent Activity</Eyebrow><div className="mt-4 flex-1"><ActivityPanel /></div>
-        </Panel>
-      </div>
-
-      <ClaudeUsageCard />
-      <InfrastructureHealthPanel data={infraHealth} />
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={order} strategy={rectSortingStrategy}>
+          <div className="grid grid-cols-1 md:grid-cols-6 xl:grid-cols-12 gap-6 items-stretch">
+            {order.map((id, i) => (
+              <SortableSection key={id} id={id} index={i} arranging={arranging}>
+                {renderSection(id)}
+              </SortableSection>
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }

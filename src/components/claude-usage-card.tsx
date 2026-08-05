@@ -10,7 +10,7 @@
    ─────────────────────────────────────────────────────────── */
 
 import { useEffect, useState } from "react";
-import { Panel, SectionHeader, Pill, EmptyState, Skeleton, rise } from "@/components/ui/kit";
+import { Panel, SectionHeader, Pill, EmptyState, Skeleton } from "@/components/ui/kit";
 
 interface UsagePayload {
   fetchedAt: string | null;
@@ -91,7 +91,7 @@ export function ClaudeUsageCard() {
   }, []);
 
   return (
-    <Panel className="p-6 mb-6 hq-rise" style={rise(11)}>
+    <Panel className="p-6 h-full">
       <SectionHeader label="Claude Code" title="Usage" />
       {!loaded ? (
         <div className="space-y-3">

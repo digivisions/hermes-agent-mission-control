@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   const all = new URL(req.url).searchParams.get("all") === "1";
   const clients = await prisma.client.findMany({
     where: all ? {} : { status: { not: "archived" } },
-    orderBy: [{ status: "asc" }, { name: "asc" }],
+    orderBy: [{ sortOrder: "asc" }, { status: "asc" }, { name: "asc" }],
   });
   const profiles = clients.map((c) => c.hermesProfile ?? c.slug);
 
@@ -93,10 +93,13 @@ export async function POST(req: Request) {
 
   if (errors.length) return badRequest(errors);
 
+  // New clients land at the top of the board — same rule as /projects (D5).
+  const min = await prisma.client.aggregate({ _min: { sortOrder: true } });
   try {
     const client = await prisma.client.create({
       data: {
         slug, name, type, status, accent,
+        sortOrder: (min._min.sortOrder ?? 0) - 1,
         description:  normText(body.description),
         contextNotes: normText(body.contextNotes),
         hermesProfile: normText(body.hermesProfile),
@@ -112,4 +115,19 @@ export async function POST(req: Request) {
       return Response.json({ error: "conflict", errors: [{ field: "slug", message: `'${slug}' already exists` }] }, { status: 409 });
     throw e;
   }
+}
+
+/** Collection-level reorder: { order: ["slug-a", "slug-b", ...] }.
+ *  One request per drop; sortOrder is the array index. Slugs not present are
+ *  left alone (archived clients aren't on the board). Last write wins (D8). */
+export async function PATCH(req: Request) {
+  const body = await req.json().catch(() => null);
+  const order: string[] | null = Array.isArray(body?.order) ? body.order.map((s: unknown) => String(s)) : null;
+  if (!order) return badRequest([{ field: "order", message: "expected string[]" }]);
+  if (order.length > 200) return badRequest([{ field: "order", message: "too many entries" }]);
+
+  await prisma.$transaction(
+    order.map((slug, i) => prisma.client.updateMany({ where: { slug }, data: { sortOrder: i } }))
+  );
+  return Response.json({ ok: true, reordered: order.length });
 }
