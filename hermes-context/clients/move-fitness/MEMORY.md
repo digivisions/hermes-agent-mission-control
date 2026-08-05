@@ -2,7 +2,7 @@ Client "MOVE Fitness" (MoveVN) is a pilates/cycle studio group in Vietnam. Digit
 §
 Stack: Laravel backend + React/Vite web dashboard + Expo React Native mobile app, running as a Docker Compose stack (prod + staging) on ONE VPS. Containers and volumes use the suffix -prod / -staging, NEVER -production: laravel-prod, queue-worker-prod, scheduler-prod, mysql-prod, nginx-prod, redis-prod. Production DB is movedb (not movedb_prod); staging is movedb_stage. Code is served from named volumes, not the image. nginx-prod is the edge for BOTH domains.
 §
-The ONLY piece still on Hostinger is the marketing site movevn.com (WordPress), slated to migrate onto the same VPS (Andy 2026-08-05, not yet scheduled). Until then movevn.com = Hostinger, id.movevn.com = VPS — don't conflate.
+The ONLY piece still on Hostinger is the marketing site movevn.com (WordPress), slated to migrate onto the same VPS (Andy 2026-08-05, not yet scheduled). Until then movevn.com = Hostinger, id.movevn.com = VPS.
 §
 Deploys: production ships from the dedicated production branch via a manual "CD - Deploy to Production" workflow. main is stale and diverged — never deploy it. Always restart queue workers after a deploy; long-running queue:work caches classes and will run stale code.
 §
