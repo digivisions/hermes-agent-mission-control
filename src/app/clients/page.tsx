@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Briefcase, Wallet, Pencil, Plus } from "lucide-react";
+import { Briefcase, Wallet, Pencil, Plus, GripVertical } from "lucide-react";
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, useSortable, arrayMove, rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Eyebrow, Panel, Pill, Button, EmptyState, TextInput } from "@/components/ui/kit";
 import { Sparkline } from "@/components/sparkline";
 import { timeAgo } from "@/components/approval-card";
@@ -17,6 +24,7 @@ interface KlailyData {
 
 interface ClientCard {
   slug: string;
+  sortOrder: number;
   name: string;
   type: string;
   hermesProfile: string | null;
@@ -35,6 +43,38 @@ const clientStatusTone: Record<string, "up" | "warn" | "down" | "neutral" | "acc
   active: "up", unconfigured: "neutral", archived: "neutral",
 };
 
+/** Sortable shell around a client card. The card body stays a link; only the
+ *  grip carries drag listeners (D4) — the klaily revenue input, the doc chips
+ *  and the edit button must all keep working. Mirrors
+ *  src/app/projects/page.tsx:47-55 exactly. */
+function SortableClient({ id, children }: { id: string; children: (handle: React.ReactNode) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const handle = (
+    <button
+      {...attributes}
+      {...listeners}
+      aria-label="Kéo để sắp xếp"
+      title="Kéo để sắp xếp"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      className="cursor-grab active:cursor-grabbing p-1 rounded text-[var(--hq-text-ghost)] opacity-50 hover:opacity-100"
+    >
+      <GripVertical className="w-4 h-4" />
+    </button>
+  );
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 30 : undefined }}
+      className={`hq-rise ${isDragging ? "opacity-90 relative" : ""}`}
+      // The card is an <a>; without this the browser starts its own native
+      // link-drag ghost on top of dnd-kit's. See §7 L3.
+      onDragStart={(e) => e.preventDefault()}
+    >
+      {children(handle)}
+    </div>
+  );
+}
+
 type EditorState = { mode: "create" } | { mode: "edit"; client: ClientCard };
 
 export default function ClientsPage() {
@@ -47,12 +87,18 @@ export default function ClientsPage() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [order, setOrder] = useState<string[]>([]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const load = useCallback(() => {
     fetch(`/api/clients${showArchived ? "?all=1" : ""}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
-        if (d?.clients) setClients(d.clients);
+        if (d?.clients) {
+          setClients(d.clients);
+          setOrder(d.clients.map((c: ClientCard) => c.slug));
+        }
         if (d?.error) setError(d.error);
       })
       .catch(() => setError("Failed to load clients"))
@@ -84,10 +130,28 @@ export default function ClientsPage() {
     }
   };
 
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setOrder(prev => {
+      const next = arrayMove(prev, prev.indexOf(String(active.id)), prev.indexOf(String(over.id)));
+      fetch("/api/clients", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: next }),
+      }).catch(() => {});
+      return next;
+    });
+  };
+
+  const ordered = order.length === clients.length
+    ? order.map(id => clients.find(c => c.slug === id)!).filter(Boolean)
+    : clients;
   const q = query.trim().toLowerCase();
   const filteredClients = q
-    ? clients.filter(c => c.name.toLowerCase().includes(q) || (c.description ?? "").toLowerCase().includes(q))
-    : clients;
+    ? ordered.filter(c => c.name.toLowerCase().includes(q) || (c.description ?? "").toLowerCase().includes(q))
+    : ordered;
+  const filteredIds = filteredClients.map(c => c.slug);
 
   return (
     <div className="relative z-10 w-full mx-auto pb-16">
@@ -95,6 +159,7 @@ export default function ClientsPage() {
         <div>
           <div className="eyebrow mb-2.5">Digital Visions</div>
           <h1 className="text-[32px] font-semibold tracking-[-0.02em] leading-none text-[var(--hq-text)]">Clients</h1>
+          <p className="num text-[var(--hq-text-ghost)] text-[12.5px] mt-3">{clients.length} clients · kéo để sắp xếp</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm theo tên hoặc mô tả…" className="w-56" />
@@ -109,12 +174,16 @@ export default function ClientsPage() {
 
       {error && <div className="text-[12.5px] text-[var(--hq-down)] mb-4">{error}</div>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {filteredClients.map((c) => {
-          const live = c.status === "active" && !!c.hermesProfile;
-          const accent = c.accent ?? "#94a3b8";
-          return (
-            <Panel key={c.slug} href={`/clients/${c.slug}`} interactive className="h-full flex flex-col p-6">
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={filteredIds} strategy={rectSortingStrategy}>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {filteredClients.map((c) => {
+              const live = c.status === "active" && !!c.hermesProfile;
+              const accent = c.accent ?? "#94a3b8";
+              return (
+                <SortableClient key={c.slug} id={c.slug}>
+                  {(handle) => (
+                <Panel href={`/clients/${c.slug}`} interactive className="h-full flex flex-col p-6">
               <div className="flex items-center gap-2.5 mb-3">
                 <div className="w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center shrink-0" style={{ background: "color-mix(in srgb, " + accent + " 15%, transparent)", color: accent }}>
                   <Briefcase className="w-4 h-4" />
@@ -152,6 +221,7 @@ export default function ClientsPage() {
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
+                  {handle}
                 </div>
               </div>
 
@@ -213,10 +283,14 @@ export default function ClientsPage() {
                   <div className="num text-[10px] text-[var(--hq-text-faint)] mt-2">Stored in dashboard DB — not written to the vault.</div>
                 </div>
               )}
-            </Panel>
-          );
-        })}
-      </div>
+                </Panel>
+                  )}
+                </SortableClient>
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {loaded && clients.length === 0 && (
         <EmptyState
