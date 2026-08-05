@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FolderKanban, Clock, GripVertical, Pencil, Plus, FolderOpen, MessageSquare } from "lucide-react";
+import { FolderKanban, Clock, GripVertical, Pencil, Plus, FolderOpen, MessageSquare, RotateCcw } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
@@ -9,7 +9,7 @@ import {
   SortableContext, useSortable, arrayMove, rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Panel, Pill, Button, EmptyState, Modal, Eyebrow, TextInput } from "@/components/ui/kit";
+import { Panel, Pill, Button, EmptyState, Modal, Eyebrow, TextInput, SectionHeader } from "@/components/ui/kit";
 import { ProjectEditor, type ProjectCardLike } from "@/components/project-editor";
 import { FileCenter } from "@/components/file-center";
 import { plainPreview } from "@/components/markdown";
@@ -170,25 +170,40 @@ export default function ProjectsPage() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [filesFor, setFilesFor] = useState<Project | null>(null);
   const [query, setQuery] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const load = useCallback(() => {
-    fetch(`/api/projects${showArchived ? "?all=1" : ""}`)
+    fetch("/api/projects?all=1")
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.projects) {
           setProjects(d.projects);
-          setOrder(d.projects.map((p: Project) => p.slug));
+          setOrder(d.projects.filter((p: Project) => p.status !== "archived").map((p: Project) => p.slug));
         }
         if (d?.error) setError(d.error);
       })
       .catch(() => setError("Failed to load projects"))
       .finally(() => setLoaded(true));
-  }, [showArchived]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const restore = async (slug: string) => {
+    setRestoring(slug);
+    setProjects(prev => prev.map(p => p.slug === slug ? { ...p, status: "active" } : p));
+    try {
+      await fetch(`/api/projects/${slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      });
+    } finally {
+      load();
+      setRestoring(null);
+    }
+  };
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -204,11 +219,12 @@ export default function ProjectsPage() {
     });
   };
 
-  const ordered = order.length === projects.length ? order.map(id => projects.find(p => p.slug === id)!).filter(Boolean) : projects;
   const q = query.trim().toLowerCase();
-  const filtered = q
-    ? ordered.filter(p => p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q))
-    : ordered;
+  const match = (p: Project) => !q || p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q);
+  const activeAll = projects.filter(p => p.status !== "archived");
+  const ordered = order.length === activeAll.length ? order.map(id => activeAll.find(p => p.slug === id)!).filter(Boolean) : activeAll;
+  const filtered = ordered.filter(match);
+  const archivedProjects = projects.filter(p => p.status === "archived").filter(match);
   const filteredIds = filtered.map(p => p.slug);
 
   return (
@@ -217,13 +233,10 @@ export default function ProjectsPage() {
         <div>
           <div className="eyebrow mb-3">Workspace</div>
           <h1 className="text-[36px] font-semibold tracking-[-0.02em] leading-none text-[var(--hq-text)]" style={{ fontFamily: "var(--font-display)" }}>Projects</h1>
-          <p className="num text-[var(--hq-text-ghost)] text-[12.5px] mt-3">{projects.length} internal projects · kéo để sắp xếp</p>
+          <p className="num text-[var(--hq-text-ghost)] text-[12.5px] mt-3">{activeAll.length} internal projects · kéo để sắp xếp</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm theo tên hoặc mô tả…" className="w-56" />
-          <Button size="sm" onClick={() => setShowArchived(s => !s)}>
-            {showArchived ? "Ẩn mục lưu trữ" : "Hiện mục lưu trữ"}
-          </Button>
           <Button variant="primary" onClick={() => setEditor({ mode: "create" })}>
             <Plus className="w-3.5 h-3.5" /> New project
           </Button>
@@ -242,7 +255,7 @@ export default function ProjectsPage() {
         </SortableContext>
       </DndContext>
 
-      {loaded && projects.length === 0 && (
+      {loaded && activeAll.length === 0 && archivedProjects.length === 0 && (
         <EmptyState
           icon={<FolderKanban />}
           title="No projects yet"
@@ -250,8 +263,42 @@ export default function ProjectsPage() {
           action={<Button variant="primary" onClick={() => setEditor({ mode: "create" })}>New project</Button>}
         />
       )}
-      {loaded && projects.length > 0 && filtered.length === 0 && (
+      {loaded && activeAll.length === 0 && archivedProjects.length > 0 && (
+        <p className="text-[12.5px] text-[var(--hq-text-ghost)]">Không có mục đang hoạt động.</p>
+      )}
+      {loaded && activeAll.length > 0 && filtered.length === 0 && (
         <EmptyState icon={<FolderKanban />} title="No matches" hint="Try a different search." />
+      )}
+
+      {archivedProjects.length > 0 && (
+        <div className="mt-12 opacity-75">
+          <SectionHeader label="Lưu trữ" title={`${archivedProjects.length} mục đã lưu trữ`} />
+          <div className="flex flex-col gap-2">
+            {archivedProjects.map(p => (
+              <Panel key={p.slug} className="flex items-center gap-3 px-4 py-3">
+                <div className="w-6 h-6 rounded-[var(--r-sm)] flex items-center justify-center shrink-0"
+                     style={{ background: "color-mix(in srgb, " + (p.accent ?? "#94a3b8") + " 12%, transparent)",
+                              color: p.accent ?? "#94a3b8" }}>
+                  <FolderKanban className="w-3.5 h-3.5" />
+                </div>
+                <a href={`/projects/${p.slug}`}
+                   className="text-[13.5px] text-[var(--hq-text-2)] truncate flex-1 hover:underline decoration-1 underline-offset-2">
+                  {p.name}
+                </a>
+                <Pill tone="neutral">{label("priority", p.priority)}</Pill>
+                <Pill tone="neutral">{label("status", p.status)}</Pill>
+                <span className="num text-[10.5px] text-[var(--hq-text-ghost)]">{timeAgo(p.updatedAt)}</span>
+                <Button size="sm" disabled={restoring === p.slug} onClick={() => restore(p.slug)}>
+                  <RotateCcw className="w-3.5 h-3.5" /> {restoring === p.slug ? "Đang khôi phục…" : "Khôi phục"}
+                </Button>
+                <button aria-label={`Edit ${p.name}`} onClick={() => setEditor({ mode: "edit", project: p })}
+                        className="p-1 rounded text-[var(--text-3)] hover:text-[var(--text)] transition-colors">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </Panel>
+            ))}
+          </div>
+        </div>
       )}
 
       {editor && (

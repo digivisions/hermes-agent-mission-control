@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Briefcase, Wallet, Pencil, Plus, GripVertical } from "lucide-react";
+import { Briefcase, Wallet, Pencil, Plus, GripVertical, RotateCcw } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
@@ -9,7 +9,7 @@ import {
   SortableContext, useSortable, arrayMove, rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Eyebrow, Panel, Pill, Button, EmptyState, TextInput } from "@/components/ui/kit";
+import { Eyebrow, Panel, Pill, Button, EmptyState, TextInput, SectionHeader } from "@/components/ui/kit";
 import { Sparkline } from "@/components/sparkline";
 import { timeAgo } from "@/components/approval-card";
 import { plainPreview } from "@/components/markdown";
@@ -86,24 +86,39 @@ export default function ClientsPage() {
   const [saving, setSaving] = useState(false);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [query, setQuery] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
   const [order, setOrder] = useState<string[]>([]);
+  const [restoring, setRestoring] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const load = useCallback(() => {
-    fetch(`/api/clients${showArchived ? "?all=1" : ""}`)
+    fetch("/api/clients?all=1")
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.clients) {
           setClients(d.clients);
-          setOrder(d.clients.map((c: ClientCard) => c.slug));
+          setOrder(d.clients.filter((c: ClientCard) => c.status !== "archived").map((c: ClientCard) => c.slug));
         }
         if (d?.error) setError(d.error);
       })
       .catch(() => setError("Failed to load clients"))
       .finally(() => setLoaded(true));
-  }, [showArchived]);
+  }, []);
+
+  const restore = async (slug: string) => {
+    setRestoring(slug);
+    setClients(prev => prev.map(c => c.slug === slug ? { ...c, status: "active" } : c));
+    try {
+      await fetch(`/api/clients/${slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      });
+    } finally {
+      load();
+      setRestoring(null);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -144,13 +159,12 @@ export default function ClientsPage() {
     });
   };
 
-  const ordered = order.length === clients.length
-    ? order.map(id => clients.find(c => c.slug === id)!).filter(Boolean)
-    : clients;
   const q = query.trim().toLowerCase();
-  const filteredClients = q
-    ? ordered.filter(c => c.name.toLowerCase().includes(q) || (c.description ?? "").toLowerCase().includes(q))
-    : ordered;
+  const match = (c: ClientCard) => !q || c.name.toLowerCase().includes(q) || (c.description ?? "").toLowerCase().includes(q);
+  const activeAll = clients.filter(c => c.status !== "archived");
+  const ordered = order.length === activeAll.length ? order.map(id => activeAll.find(c => c.slug === id)!).filter(Boolean) : activeAll;
+  const filteredClients = ordered.filter(match);
+  const archivedClients = clients.filter(c => c.status === "archived").filter(match);
   const filteredIds = filteredClients.map(c => c.slug);
 
   return (
@@ -159,13 +173,10 @@ export default function ClientsPage() {
         <div>
           <div className="eyebrow mb-2.5">Digital Visions</div>
           <h1 className="text-[32px] font-semibold tracking-[-0.02em] leading-none text-[var(--hq-text)]">Clients</h1>
-          <p className="num text-[var(--hq-text-ghost)] text-[12.5px] mt-3">{clients.length} clients · kéo để sắp xếp</p>
+          <p className="num text-[var(--hq-text-ghost)] text-[12.5px] mt-3">{activeAll.length} clients · kéo để sắp xếp</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm theo tên hoặc mô tả…" className="w-56" />
-          <Button size="sm" onClick={() => setShowArchived(s => !s)}>
-            {showArchived ? "Ẩn mục lưu trữ" : "Hiện mục lưu trữ"}
-          </Button>
           <Button variant="primary" onClick={() => setEditor({ mode: "create" })}>
             <Plus className="w-3.5 h-3.5" /> New client
           </Button>
@@ -292,7 +303,7 @@ export default function ClientsPage() {
         </SortableContext>
       </DndContext>
 
-      {loaded && clients.length === 0 && (
+      {loaded && activeAll.length === 0 && archivedClients.length === 0 && (
         <EmptyState
           icon={<Briefcase />}
           title="No clients yet"
@@ -300,8 +311,41 @@ export default function ClientsPage() {
           action={<Button variant="primary" onClick={() => setEditor({ mode: "create" })}>New client</Button>}
         />
       )}
-      {loaded && clients.length > 0 && filteredClients.length === 0 && (
+      {loaded && activeAll.length === 0 && archivedClients.length > 0 && (
+        <p className="text-[12.5px] text-[var(--hq-text-ghost)]">Không có mục đang hoạt động.</p>
+      )}
+      {loaded && activeAll.length > 0 && filteredClients.length === 0 && (
         <EmptyState icon={<Briefcase />} title="No matches" hint="Try a different search." />
+      )}
+
+      {archivedClients.length > 0 && (
+        <div className="mt-12 opacity-75">
+          <SectionHeader label="Lưu trữ" title={`${archivedClients.length} mục đã lưu trữ`} />
+          <div className="flex flex-col gap-2">
+            {archivedClients.map(c => (
+              <Panel key={c.slug} className="flex items-center gap-3 px-4 py-3">
+                <div className="w-6 h-6 rounded-[var(--r-sm)] flex items-center justify-center shrink-0"
+                     style={{ background: "color-mix(in srgb, " + (c.accent ?? "#94a3b8") + " 12%, transparent)",
+                              color: c.accent ?? "#94a3b8" }}>
+                  <Briefcase className="w-3.5 h-3.5" />
+                </div>
+                <a href={`/clients/${c.slug}`}
+                   className="text-[13.5px] text-[var(--hq-text-2)] truncate flex-1 hover:underline decoration-1 underline-offset-2">
+                  {c.name}
+                </a>
+                <Pill tone="neutral">{label("clientType", c.type)}</Pill>
+                <Pill tone="neutral">{label("status", c.status)}</Pill>
+                <Button size="sm" disabled={restoring === c.slug} onClick={() => restore(c.slug)}>
+                  <RotateCcw className="w-3.5 h-3.5" /> {restoring === c.slug ? "Đang khôi phục…" : "Khôi phục"}
+                </Button>
+                <button aria-label={`Edit ${c.name}`} onClick={() => setEditor({ mode: "edit", client: c })}
+                        className="p-1 rounded text-[var(--text-3)] hover:text-[var(--text)] transition-colors">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </Panel>
+            ))}
+          </div>
+        </div>
       )}
 
       {editor && (
