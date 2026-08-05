@@ -576,6 +576,7 @@ model Client {
   type          String   @default("internal") // 'ecommerce' | 'webapp' | 'internal' | 'edtech' | 'agency'
   hermesProfile String? // Hermes profile slug; null = no profile provisioned
   model         String   @default("deepseek-v4-flash")
+  sortOrder     Int      @default(0) // manual drag order on /clients; ties broken by status then name
   metricsConfig Json? // { provider: 'shopify', shop: '...' } — read by nobody until Phase 5
   repoPath      String? // absolute path ON THE MAC to this client's git repo, e.g.
                         //   '/Users/annguyen/Claude/Projects/Klaily'. NULL ⇒ no Claude Code
@@ -590,6 +591,7 @@ model Client {
   updatedAt     DateTime @updatedAt
 
   @@index([status])
+  @@index([sortOrder])
 }
 
 // ─── Project registry (Digital Visions' OWN internal projects) ────────
