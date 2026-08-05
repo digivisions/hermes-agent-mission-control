@@ -109,12 +109,9 @@ let triageStats = { classified: 0, exempt: 0, failed: 0, costUsd: 0, routes: { c
  * clock just means one extra read or one dropped breadcrumb, never a crash),
  * and MUST stay isolated from `ccOnline` — see ccUsageTick()'s docstring. */
 const CC_USAGE_THROTTLE_MS = Math.max(15 * 60 * 1000, Number(process.env.CC_USAGE_THROTTLE_MS || 20 * 60 * 1000));
-const CC_USAGE_WRITE_MIN_MS = 5 * 60 * 1000;
 const CC_RATE_LIMIT_RE = /grace-(5h|7d)-utilization|(?:^|\D)429(?:\D|$)|usage limit|rate limit|quota exceed/i;
 let ccUsageLastAttemptAt = 0;      // ms epoch — bridge-side 20min floor (G-D5)
 let ccUsageNextAttemptAt = 0;      // ms epoch — pushed out by a Mac-reported retryAfterS
-let ccUsageLastWriteAt = 0;
-let ccUsageLastPayloadJson = null; // for the byte-identical write-throttle check
 let ccRateLimitNote = null;        // short derived string only (G-R5) — most recent event
 
 const DB_URL = process.env.DATABASE_URL || "";
@@ -905,6 +902,13 @@ async function ccUsageTick() {
     const lastCostUsd = rows[0] ? Number(rows[0].costUsd) : (prev.lastCostUsd ?? null);
     const lastRunAt = rows[0] ? rows[0].createdAt.toISOString() : (prev.lastRunAt ?? null);
 
+    // Stamped on EVERY tick, success or not. Without it a run of identical
+    // failures is indistinguishable from a bridge that stopped ticking at all:
+    // `fetchedAt` only ever moves on success and `lastRunAt` is the last
+    // Claude Code *job*, not the last usage read (which is exactly how a live
+    // 20-min failure loop read as a frozen row on 2026-08-05).
+    const lastAttemptAt = new Date(now).toISOString();
+
     let payload;
     if (r && Number.isFinite(r.pct)) {
       // A successful read. Clear the rate-limit breadcrumb once utilization
@@ -918,37 +922,62 @@ async function ccUsageTick() {
         windowHours: r.windowHours ?? 5,
         resetsAt: r.resetsAt ?? null,
         lastCostUsd, lastRunAt,
+        lastAttemptAt,
+        lastError: null,
+        statusNote: null, // a good read clears any stale token/limit explanation
         rawNote: ccRateLimitNote,
       };
-      log(`cc-usage: read ok — pct=${r.pct} windowHours=${payload.windowHours}`);
+      log(`cc-usage: read ok — pct=${r.pct} windowHours=${payload.windowHours}` +
+          `${r.tokenSource ? ` token=${r.tokenSource}` : ""}`);
     } else {
       // Transport failure (r.error) or the script's own failure (r.pct===null
       // + r.note) — either way this is a degraded payload: keep every prior
       // known number, never delete the key, never zero the percentage (G-D2).
       const reason = r?.error || r?.note || "usage probe returned nothing";
-      log(`cc-usage: read failed — ${reason}`);
+
+      // A 401 and a 429 are opposite problems and used to render identically.
+      // Only a 429 is a rate-limit event; a 401 means the Mac's exported OAuth
+      // token is no longer accepted, which back-dating a "rate_limit" note
+      // actively misexplains. Older deployed copies of the Mac script send
+      // neither flag, so fall back to the pre-2026-08-05 reading of retryAfterS.
+      const authStale = Boolean(r?.authStale);
+      const rateLimited = r?.rateLimited ?? Boolean(r?.retryAfterS && !authStale);
+
       if (r?.retryAfterS) {
         ccUsageNextAttemptAt = Math.max(ccUsageNextAttemptAt, now + r.retryAfterS * 1000);
+      }
+      if (rateLimited) {
         // A 429 from the usage API is itself a rate-limit event worth surfacing (G-4 step 6).
         ccRateLimitNote = `rate_limit at ${new Date().toISOString()} (${ccRateLimitWindow(reason)})`;
       }
+
+      const statusNote = authStale
+        ? "Token Claude Code hết hạn — mở Claude Code trên Mac 1 lần để làm mới, thẻ tự chạy lại sau ~30 phút."
+        : rateLimited
+          ? `Anthropic đang giới hạn truy vấn usage — thử lại sau ~${Math.round((r.retryAfterS || 300) / 60)} phút.`
+          : `Chưa đọc được usage từ Mac (${reason}).`;
+      log(`cc-usage: read failed — ${reason}${authStale ? " (token stale, backing off)" : ""}`);
+
       payload = {
         ...prev,
         pct: prev.pct ?? null,
         parserV: Number.isFinite(prev.parserV) ? prev.parserV : 1,
         source: "unavailable",
-        rawNote: ccRateLimitNote ?? prev.rawNote ?? null,
+        // Only a real rate-limit event may leave a rate-limit breadcrumb; a
+        // 401 must not inherit hours-old `prev.rawNote` saying "rate_limit".
+        rawNote: rateLimited ? ccRateLimitNote : (authStale ? null : prev.rawNote ?? null),
+        lastAttemptAt,
+        lastError: String(reason).slice(0, 120),
+        statusNote,
         lastCostUsd, lastRunAt,
       };
     }
 
-    const json = JSON.stringify(payload);
-    const identical = json === ccUsageLastPayloadJson;
-    if (!identical || now - ccUsageLastWriteAt >= CC_USAGE_WRITE_MIN_MS) {
-      await setStore("claude-usage", payload);
-      ccUsageLastPayloadJson = json;
-      ccUsageLastWriteAt = now;
-    }
+    // Written unconditionally: the tick is already throttled to >=20min
+    // (CC_USAGE_THROTTLE_MS), so there is no write storm to defend against,
+    // and the byte-identical check this replaces could suppress the write that
+    // carries a fresh lastAttemptAt.
+    await setStore("claude-usage", payload);
   } catch (e) {
     log("cc-usage: tick failed —", e.message);
   }

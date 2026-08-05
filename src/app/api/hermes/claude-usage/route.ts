@@ -32,6 +32,10 @@ export async function GET() {
     lastCostUsd: number | null;
     lastRunAt: string | null;
     rawNote: string | null;
+    // Added 2026-08-05. Optional: rows written by an older bridge lack them.
+    lastAttemptAt?: string | null;  // when the bridge last TRIED (moves on failure too)
+    lastError?: string | null;      // short machine reason, e.g. "api http-401"
+    statusNote?: string | null;     // the same reason, phrased for Andy
   };
 
   const costs = await prisma.$queryRaw<

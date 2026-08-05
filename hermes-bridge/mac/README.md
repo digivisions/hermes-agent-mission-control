@@ -54,8 +54,10 @@ exactly as designed.
 
 ```bash
 mkdir -p ~/.hermes/bin ~/.hermes/cc-worktrees
-cp hermes-bridge/mac/hermes-cc-run.mjs ~/.hermes/bin/
-chmod +x ~/.hermes/bin/hermes-cc-run.mjs
+cp hermes-bridge/mac/hermes-cc-run.mjs      ~/.hermes/bin/
+cp hermes-bridge/mac/hermes-cc-usage.mjs    ~/.hermes/bin/
+cp hermes-bridge/mac/cc-token-export.sh     ~/.hermes/bin/
+chmod +x ~/.hermes/bin/hermes-cc-run.mjs ~/.hermes/bin/hermes-cc-usage.mjs ~/.hermes/bin/cc-token-export.sh
 ```
 
 The enforcing allowlist (`~/.hermes/cc-repos.allow`, E18) is a separate,
@@ -68,4 +70,48 @@ see `prisma/seed-clients.ts`'s header comment.
 ```bash
 node ~/.hermes/bin/hermes-cc-run.mjs <<< '{"ping":true}'
 # → {"ok":true,"ping":"pong","claude":"2.1.221 (Claude Code)","node":"v22..."}
+
+node ~/.hermes/bin/hermes-cc-usage.mjs
+# → {"pct":6,"windowHours":5,"resetsAt":"...","parserV":1,"fetchedAt":"...","tokenSource":"export-file"}
 ```
+
+## The usage gauge's OAuth token (Spec G)
+
+`hermes-cc-usage.mjs` reads the account's 5-hour utilization from
+`GET https://api.anthropic.com/api/oauth/usage`. It is **read-only** — it
+never refreshes, rotates or re-auths the token (G-R2), because rotating it
+out of band logs Claude Code out on this Mac.
+
+The keychain is GUI-session-only, so the VPS's non-interactive SSH session
+cannot read it. `cc-token-export.sh` (LaunchAgent
+`com.hermes.cc-token-export`, `StartInterval` 600) copies the blob verbatim
+to `~/.hermes/state/cc-oauth-token` (0600), which is the only credential the
+SSH path can see.
+
+**Pitfall that broke this for a day (2026-08-05).** The login keychain holds
+**two** generic-password items under the service `Claude Code-credentials`:
+
+| acct | written by | state |
+|---|---|---|
+| `Claude Code` | a January 2026 build | dead — untouched since 2026-01-31 |
+| `$USER` (`annguyen`) | current Claude Code | live — rewritten on every token refresh |
+
+`security find-generic-password -s "Claude Code-credentials" -w` returns the
+**first match**, which on this Mac is the January item. Both the exporter and
+the reader therefore used a six-month-dead access token, and every usage read
+came back `401 Invalid authentication credentials` — so the card never once
+showed a real number. Both scripts now search **by account**
+(`-a "$USER"` first) and rank candidates by `expiresAt`. If Claude Code ever
+changes where it writes again, that ranking is what makes it self-correct;
+`expiresAt` is only ever used to *rank*, never to reject (G-R3 — the metadata
+has been observed to lie in both directions).
+
+**Poll cadence.** 20 min (`CC_USAGE_THROTTLE_MS`), with a 15-min floor, plus a
+same-cadence throttle cache in the script itself. The 429s seen during the
+outage were **not** account quota (utilization was 4–7% throughout) — they
+were the penalty bucket for repeatedly presenting a rejected credential; a
+valid token gets `200` immediately. For reference the `claude-hud` plugin
+polls the same endpoint with a 60s cache TTL, so 20 min is far inside what
+this endpoint sustains. A `401` now asks for a 30-min backoff instead
+(`AUTH_STALE_BACKOFF_S`), since only Claude Code refreshing the token can fix
+it, and it recovers on its own once that happens.

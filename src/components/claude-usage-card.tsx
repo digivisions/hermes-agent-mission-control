@@ -22,6 +22,9 @@ interface UsagePayload {
   lastCostUsd: number | null;
   lastRunAt: string | null;
   rawNote: string | null;
+  lastAttemptAt?: string | null;
+  lastError?: string | null;
+  statusNote?: string | null;
 }
 interface CostsPayload {
   deepseekTodayUsd: number;
@@ -40,16 +43,16 @@ function ictHHMM(iso: string | null): string | null {
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-function ageText(iso: string | null): string | null {
+function ageText(iso: string | null | undefined, prefix = "cập nhật"): string | null {
   if (!iso) return null;
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return null;
   const m = Math.floor((Date.now() - ms) / 60000);
-  if (m < 1) return "cập nhật vừa xong";
-  if (m < 60) return `cập nhật ${m} phút trước`;
+  if (m < 1) return `${prefix} vừa xong`;
+  if (m < 60) return `${prefix} ${m} phút trước`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `cập nhật ${h} giờ trước`;
-  return `cập nhật ${Math.floor(h / 24)} ngày trước`;
+  if (h < 24) return `${prefix} ${h} giờ trước`;
+  return `${prefix} ${Math.floor(h / 24)} ngày trước`;
 }
 
 function barColor(pct: number): string {
@@ -97,9 +100,19 @@ export function ClaudeUsageCard() {
           <Skeleton className="h-3 w-28" />
         </div>
       ) : !usage || usage.pct == null ? (
+        // No number to draw yet. Say WHY — the bridge now records the reason
+        // and the moment it last tried, so this stops being a dead end that
+        // only `pm2 logs` can explain.
         <EmptyState
           title="Chưa lấy được usage"
-          hint="Kiểm tra bridge: pm2 logs hermes-bridge | grep cc-usage"
+          hint={[
+            usage?.statusNote ||
+              (usage?.lastError ? `Bridge báo: ${usage.lastError}` : null) ||
+              "Bridge chưa gửi số liệu nào. Kiểm tra: pm2 logs hermes-bridge | grep cc-usage",
+            ageText(usage?.lastAttemptAt, "thử lần cuối"),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         />
       ) : (
         (() => {
@@ -107,6 +120,7 @@ export function ClaudeUsageCard() {
           const stale = usage.source === "unavailable";
           const resetHHMM = ictHHMM(usage.resetsAt);
           const age = ageText(usage.fetchedAt);
+          const attemptAge = ageText(usage.lastAttemptAt, "thử lần cuối");
           const windowLabel = usage.windowHours === 5 ? "5h luân phiên" : "7 ngày";
           return (
             <>
@@ -126,7 +140,17 @@ export function ClaudeUsageCard() {
               {resetHHMM && (
                 <div className="num text-[11.5px] text-[var(--hq-text-ghost)] mt-0.5">Reset lúc {resetHHMM} ICT</div>
               )}
-              {age && <div className="num text-[10px] text-[var(--hq-text-faint)] mt-1">{age}</div>}
+              {(age || attemptAge) && (
+                <div className="num text-[10px] text-[var(--hq-text-faint)] mt-1">
+                  {[age, stale ? attemptAge : null].filter(Boolean).join(" · ")}
+                </div>
+              )}
+              {/* Why the bar is frozen, in words — shown ABOVE the raw
+                  breadcrumb because a stale `rawNote` alone (e.g. an hours-old
+                  "rate_limit") explained the wrong thing entirely. */}
+              {stale && usage.statusNote && (
+                <div className="text-[11.5px] mt-2" style={{ color: "var(--hq-warn)" }}>{usage.statusNote}</div>
+              )}
               {usage.rawNote && (
                 <div className="text-[11.5px] mt-2" style={{ color: "var(--hq-warn)" }}>{usage.rawNote}</div>
               )}
